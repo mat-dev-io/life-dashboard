@@ -114,7 +114,7 @@
 </head>
 <body>
 <h1>睡眠ダッシュボード</h1>
-<div class="sub">データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/sleep-daily.csv">LIFE/data/health/sleep-daily.csv</a>（毎日 12:05 に自動更新） / 単位: 前日12:00〜当日12:00 / <a href="#" id="changeToken">トークン変更</a></div>
+<div class="sub">データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/sleep-daily.csv">LIFE/data/health/sleep-daily.csv</a>（毎日 12:05 に自動更新） / 日付 = 就寝日（当日12:00〜翌日12:00） / <a href="#" id="changeToken">トークン変更</a></div>
 
 <div id="auth" class="card" hidden>
   <h2>アクセストークンの設定（初回のみ）</h2>
@@ -150,7 +150,7 @@
   </div>
 
   <div class="card">
-    <h2>就寝・起床時刻</h2>
+    <h2>入眠・起床時刻</h2>
     <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
   </div>
 
@@ -190,7 +190,7 @@ const fmtMin = (m) => {
 };
 const fmtDateShort = (d) => d.slice(5).replace("-", "/");
 
-// 就寝・起床時刻（HH:MM）を「18:00 起点の経過分」に写像して 0 時またぎを直線化する
+// 入眠・起床時刻（HH:MM）を「18:00 起点の経過分」に写像して 0 時またぎを直線化する
 const timeToY = (hhmm) => {
   if (!hhmm) return null;
   const [h, m] = hhmm.split(":").map(Number);
@@ -225,9 +225,9 @@ function renderTiles() {
       </div>
       <div class="${ok ? "status-ok" : "status-ng"}">${ok ? "○ 目標達成" : "× 7時間未満"}</div>
     </div>
-    <div class="tile"><div class="label">就寝 → 起床</div>
-      <div class="value">${last.bedtime}<small>→</small>${last.wake_time}</div></div>
-    <div class="tile"><div class="label">入眠までの時間</div>
+    <div class="tile"><div class="label">入眠 → 起床</div>
+      <div class="value">${last.sleep_onset}<small>→</small>${last.wake_time}</div></div>
+    <div class="tile"><div class="label">就床から入眠</div>
       <div class="value">${last.latency_min !== "" ? last.latency_min + "<small>分</small>" : "−"}</div></div>
     <div class="tile"><div class="label">睡眠効率</div>
       <div class="value">${last.efficiency_pct !== "" ? last.efficiency_pct + "<small>%</small>" : "−"}</div></div>
@@ -252,7 +252,7 @@ function renderAvgs() {
   document.getElementById("avgs").innerHTML = `
     <div><dt>平均睡眠時間</dt><dd>${fmtMin(avg("sleep_min"))}</dd></div>
     <div><dt>7 時間達成</dt><dd>${okDays} / ${n} 日</dd></div>
-    <div><dt>平均就寝</dt><dd>${avgTime("bedtime")}</dd></div>
+    <div><dt>平均入眠</dt><dd>${avgTime("sleep_onset")}</dd></div>
     <div><dt>平均起床</dt><dd>${avgTime("wake_time")}</dd></div>
     <div><dt>平均 深い睡眠</dt><dd>${fmtMin(avg("deep_min"))}</dd></div>
     <div><dt>平均レム睡眠</dt><dd>${fmtMin(avg("rem_min"))}</dd></div>
@@ -261,9 +261,9 @@ function renderAvgs() {
 }
 
 function renderTable() {
-  const head = ["日付", "就寝", "起床", "入眠", "睡眠", "Core", "Deep", "REM", "覚醒", "在床", "効率%"];
+  const head = ["日付", "入眠", "起床", "入眠", "睡眠", "Core", "Deep", "REM", "覚醒", "在床", "効率%"];
   const body = [...visibleRows()].reverse().map((r) => `<tr>
-    <td>${r.date}</td><td>${r.bedtime}</td><td>${r.wake_time}</td>
+    <td>${r.date}</td><td>${r.sleep_onset}</td><td>${r.wake_time}</td>
     <td>${r.latency_min}分</td><td>${fmtMin(r.sleep_min)}</td>
     <td>${r.core_min}分</td><td>${r.deep_min}分</td><td>${r.rem_min}分</td>
     <td>${r.awake_count}回/${r.awake_min}分</td>
@@ -330,7 +330,7 @@ function renderCharts() {
     options: o,
   }));
 
-  // 2. 就寝・起床時刻（18:00 起点に写像した時刻軸）
+  // 2. 入眠・起床時刻（18:00 起点に写像した時刻軸）
   const timeDs = (label, key, color) => ({
     label, data: v.map((r) => timeToY(r[key])), borderColor: color,
     backgroundColor: color, borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
@@ -345,7 +345,7 @@ function renderCharts() {
   charts.push(new Chart(document.getElementById("timeChart"), {
     type: "line",
     data: { labels, datasets: [
-      timeDs("就寝", "bedtime", cssVar("--bed")),
+      timeDs("入眠", "sleep_onset", cssVar("--bed")),
       timeDs("起床", "wake_time", cssVar("--wake")),
     ] },
     options: o,
