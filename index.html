@@ -202,7 +202,7 @@ const yToTime = (y) => {
 };
 
 function parseCsv(text) {
-  const lines = text.trim().split("\n");
+  const lines = text.trim().split(/\r?\n/).map((l) => l.replace(/\r$/, ""));
   const head = lines[0].split(",");
   return lines.slice(1).map((l) => {
     const cells = l.split(",");
