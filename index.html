@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>睡眠ダッシュボード | LIFE</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --deep:           #2a78d6;  /* categorical slot 1 */
+    --core:           #008300;  /* slot 2 */
+    --rem:            #e87ba4;  /* slot 3 */
+    --bed:            #4a3aa7;  /* slot 7 */
+    --wake:           #eda100;  /* slot 4 */
+    --efficiency:     #1baf7a;  /* slot 5 */
+    --good:           #006300;
+    --bad:            #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --deep:           #3987e5;
+      --core:           #008300;
+      --rem:            #d55181;
+      --bed:            #9085e9;
+      --wake:           #c98500;
+      --efficiency:     #199e70;
+      --good:           #0ca30c;
+      --bad:            #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 16px;
+    max-width: 720px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 1.2rem; margin: 0 0 2px; }
+  .sub { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .tile .label { color: var(--text-muted); font-size: 0.7rem; }
+  .tile .value { font-size: 1.15rem; font-weight: 700; margin-top: 2px; }
+  .tile .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); }
+  .tile.hero { grid-column: span 3; display: flex; align-items: baseline; gap: 12px; }
+  .tile.hero .value { font-size: 2rem; }
+  .status-ok  { color: var(--good); font-weight: 700; }
+  .status-ng  { color: var(--bad);  font-weight: 700; }
+  .filters { display: flex; gap: 6px; margin: 8px 0 12px; }
+  .filters button {
+    flex: 1;
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] {
+    color: var(--text-primary);
+    font-weight: 700;
+    border-color: var(--baseline);
+  }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .card h2 { font-size: 0.9rem; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+  .chart-wrap { position: relative; height: 220px; }
+  .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
+  .avgs dt { color: var(--text-muted); font-size: 0.7rem; }
+  .avgs dd { margin: 0 0 4px; font-weight: 700; }
+  details { margin-top: 4px; }
+  summary { color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; padding: 4px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.75rem; white-space: nowrap; width: 100%; }
+  th, td { padding: 4px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--baseline); }
+  td { border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  .notice { color: var(--text-secondary); padding: 24px 8px; text-align: center; }
+  a { color: var(--deep); }
+</style>
+</head>
+<body>
+<h1>睡眠ダッシュボード</h1>
+<div class="sub">データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/sleep-daily.csv">LIFE/data/health/sleep-daily.csv</a>（毎日 12:05 に自動更新） / 単位: 前日12:00〜当日12:00 / <a href="#" id="changeToken">トークン変更</a></div>
+
+<div id="auth" class="card" hidden>
+  <h2>アクセストークンの設定（初回のみ）</h2>
+  <p style="font-size:0.85rem; color:var(--text-secondary)">
+    private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+    発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+    Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+    <strong>Contents: Read-only のみ</strong>にしてください。
+    トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+  </p>
+  <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"
+    style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px;
+           background:var(--page); color:var(--text-primary); margin-bottom:8px;">
+  <button id="saveToken" style="width:100%; padding:10px; border:1px solid var(--baseline);
+    border-radius:8px; background:var(--surface-1); color:var(--text-primary);
+    font-weight:700; cursor:pointer;">保存して表示</button>
+</div>
+
+<div id="notice" class="notice">読み込み中…</div>
+
+<div id="content" hidden>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="filters" role="group" aria-label="期間">
+    <button data-days="7" aria-pressed="true">7日</button>
+    <button data-days="30" aria-pressed="false">30日</button>
+    <button data-days="90" aria-pressed="false">90日</button>
+  </div>
+
+  <div class="card">
+    <h2>睡眠時間と内訳（点線 = 目標 7 時間）</h2>
+    <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>就寝・起床時刻</h2>
+    <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>睡眠効率（%）</h2>
+    <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>期間平均</h2>
+    <dl class="avgs" id="avgs"></dl>
+  </div>
+
+  <details>
+    <summary>詳細テーブル（全指標）</summary>
+    <div class="table-wrap"><table id="dataTable"></table></div>
+  </details>
+</div>
+
+<script>
+"use strict";
+// private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
+const CSV_API = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/health/sleep-daily.csv?ref=main";
+const TOKEN_KEY = "life_dashboard_pat";
+const TARGET_MIN = 7 * 60;
+let rows = [];        // 全行（date 昇順）
+let rangeDays = 7;
+let charts = [];
+
+const cssVar = (name) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const fmtMin = (m) => {
+  m = Math.round(m);
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h}時間${r}分` : `${h}時間`) : `${r}分`;
+};
+const fmtDateShort = (d) => d.slice(5).replace("-", "/");
+
+// 就寝・起床時刻（HH:MM）を「18:00 起点の経過分」に写像して 0 時またぎを直線化する
+const timeToY = (hhmm) => {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return ((h + 6) % 24) * 60 + m;
+};
+const yToTime = (y) => {
+  const h = (Math.floor(y / 60) + 18) % 24;
+  return `${String(h).padStart(2, "0")}:${String(Math.round(y % 60)).padStart(2, "0")}`;
+};
+
+function parseCsv(text) {
+  const lines = text.trim().split("\n");
+  const head = lines[0].split(",");
+  return lines.slice(1).map((l) => {
+    const cells = l.split(",");
+    return Object.fromEntries(head.map((k, i) => [k, cells[i] ?? ""]));
+  });
+}
+
+function visibleRows() {
+  return rows.slice(-rangeDays);
+}
+
+function renderTiles() {
+  const last = rows[rows.length - 1];
+  const ok = Number(last.sleep_min) >= TARGET_MIN;
+  document.getElementById("tiles").innerHTML = `
+    <div class="tile hero">
+      <div>
+        <div class="label">${last.date} の実睡眠</div>
+        <div class="value">${fmtMin(last.sleep_min)}</div>
+      </div>
+      <div class="${ok ? "status-ok" : "status-ng"}">${ok ? "○ 目標達成" : "× 7時間未満"}</div>
+    </div>
+    <div class="tile"><div class="label">就寝 → 起床</div>
+      <div class="value">${last.bedtime}<small>→</small>${last.wake_time}</div></div>
+    <div class="tile"><div class="label">入眠までの時間</div>
+      <div class="value">${last.latency_min !== "" ? last.latency_min + "<small>分</small>" : "−"}</div></div>
+    <div class="tile"><div class="label">睡眠効率</div>
+      <div class="value">${last.efficiency_pct !== "" ? last.efficiency_pct + "<small>%</small>" : "−"}</div></div>
+    <div class="tile"><div class="label">深い睡眠</div>
+      <div class="value">${fmtMin(last.deep_min)}</div></div>
+    <div class="tile"><div class="label">レム睡眠</div>
+      <div class="value">${fmtMin(last.rem_min)}</div></div>
+    <div class="tile"><div class="label">中途覚醒</div>
+      <div class="value">${last.awake_count}<small>回 / ${fmtMin(last.awake_min)}</small></div></div>`;
+}
+
+function renderAvgs() {
+  const v = visibleRows();
+  const n = v.length;
+  const avg = (key) => v.reduce((s, r) => s + (Number(r[key]) || 0), 0) / n;
+  const okDays = v.filter((r) => Number(r.sleep_min) >= TARGET_MIN).length;
+  const avgTime = (key) => {
+    const ys = v.map((r) => timeToY(r[key])).filter((y) => y !== null);
+    return ys.length ? yToTime(ys.reduce((s, y) => s + y, 0) / ys.length) : "−";
+  };
+  const effs = v.map((r) => Number(r.efficiency_pct)).filter((x) => x > 0);
+  document.getElementById("avgs").innerHTML = `
+    <div><dt>平均睡眠時間</dt><dd>${fmtMin(avg("sleep_min"))}</dd></div>
+    <div><dt>7 時間達成</dt><dd>${okDays} / ${n} 日</dd></div>
+    <div><dt>平均就寝</dt><dd>${avgTime("bedtime")}</dd></div>
+    <div><dt>平均起床</dt><dd>${avgTime("wake_time")}</dd></div>
+    <div><dt>平均 深い睡眠</dt><dd>${fmtMin(avg("deep_min"))}</dd></div>
+    <div><dt>平均レム睡眠</dt><dd>${fmtMin(avg("rem_min"))}</dd></div>
+    <div><dt>平均中途覚醒</dt><dd>${avg("awake_count").toFixed(1)} 回</dd></div>
+    <div><dt>平均睡眠効率</dt><dd>${effs.length ? (effs.reduce((s, x) => s + x, 0) / effs.length).toFixed(1) + " %" : "−"}</dd></div>`;
+}
+
+function renderTable() {
+  const head = ["日付", "就寝", "起床", "入眠", "睡眠", "Core", "Deep", "REM", "覚醒", "在床", "効率%"];
+  const body = [...visibleRows()].reverse().map((r) => `<tr>
+    <td>${r.date}</td><td>${r.bedtime}</td><td>${r.wake_time}</td>
+    <td>${r.latency_min}分</td><td>${fmtMin(r.sleep_min)}</td>
+    <td>${r.core_min}分</td><td>${r.deep_min}分</td><td>${r.rem_min}分</td>
+    <td>${r.awake_count}回/${r.awake_min}分</td>
+    <td>${fmtMin(r.in_bed_min)}</td><td>${r.efficiency_pct}</td></tr>`).join("");
+  document.getElementById("dataTable").innerHTML =
+    `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
+}
+
+function baseOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: {
+        labels: { color: cssVar("--text-secondary"), boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        border: { color: cssVar("--baseline") },
+        ticks: { color: cssVar("--text-muted"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+      },
+    },
+  };
+}
+
+function renderCharts() {
+  charts.forEach((c) => c.destroy());
+  charts = [];
+  const v = visibleRows();
+  const labels = v.map((r) => fmtDateShort(r.date));
+  const surface = cssVar("--surface-1");
+  const grid = cssVar("--grid");
+
+  // 1. 睡眠時間の内訳（積み上げ棒 + 目標線）
+  const stackDs = (label, key, color, topRadius) => ({
+    label, data: v.map((r) => Number(r[key]) || 0), backgroundColor: color,
+    borderColor: surface, borderWidth: 1, // 積み上げセグメント間の面ギャップ
+    borderRadius: topRadius ? 4 : 0, borderSkipped: false,
+    stack: "sleep", maxBarThickness: 26,
+  });
+  let o = baseOptions();
+  o.scales.x.stacked = true;
+  o.scales.y = {
+    stacked: true, beginAtZero: true,
+    grid: { color: grid }, border: { display: false },
+    ticks: { color: cssVar("--text-muted"), font: { size: 10 },
+             callback: (val) => `${Math.round(val / 60)}h` },
+  };
+  o.plugins.tooltip = { callbacks: { label: (c) =>
+    ` ${c.dataset.label}: ${c.dataset.label === "目標" ? "7時間" : fmtMin(c.parsed.y)}` } };
+  charts.push(new Chart(document.getElementById("stackChart"), {
+    type: "bar",
+    data: { labels, datasets: [
+      stackDs("深い睡眠", "deep_min", cssVar("--deep"), false),
+      stackDs("Core", "core_min", cssVar("--core"), false),
+      stackDs("レム", "rem_min", cssVar("--rem"), true),
+      { type: "line", label: "目標", data: v.map(() => TARGET_MIN),
+        borderColor: cssVar("--text-muted"), borderDash: [4, 4], borderWidth: 2,
+        pointRadius: 0, fill: false },
+    ] },
+    options: o,
+  }));
+
+  // 2. 就寝・起床時刻（18:00 起点に写像した時刻軸）
+  const timeDs = (label, key, color) => ({
+    label, data: v.map((r) => timeToY(r[key])), borderColor: color,
+    backgroundColor: color, borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+  });
+  o = baseOptions();
+  o.scales.y = {
+    grid: { color: grid }, border: { display: false },
+    ticks: { color: cssVar("--text-muted"), font: { size: 10 }, stepSize: 120,
+             callback: (val) => yToTime(val) },
+  };
+  o.plugins.tooltip = { callbacks: { label: (c) => ` ${c.dataset.label}: ${yToTime(c.parsed.y)}` } };
+  charts.push(new Chart(document.getElementById("timeChart"), {
+    type: "line",
+    data: { labels, datasets: [
+      timeDs("就寝", "bedtime", cssVar("--bed")),
+      timeDs("起床", "wake_time", cssVar("--wake")),
+    ] },
+    options: o,
+  }));
+
+  // 3. 睡眠効率（単一系列のため凡例なし。タイトルが系列名を兼ねる）
+  o = baseOptions();
+  o.plugins.legend = { display: false };
+  o.scales.y = {
+    suggestedMin: 60, suggestedMax: 100,
+    grid: { color: grid }, border: { display: false },
+    ticks: { color: cssVar("--text-muted"), font: { size: 10 } },
+  };
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 睡眠効率: ${c.parsed.y}%` } };
+  charts.push(new Chart(document.getElementById("effChart"), {
+    type: "line",
+    data: { labels, datasets: [{
+      label: "睡眠効率",
+      data: v.map((r) => Number(r.efficiency_pct) || null),
+      borderColor: cssVar("--efficiency"), backgroundColor: cssVar("--efficiency"),
+      borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+    }] },
+    options: o,
+  }));
+}
+
+function renderAll() {
+  renderTiles();
+  renderCharts();
+  renderAvgs();
+  renderTable();
+}
+
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    rangeDays = Number(btn.dataset.days);
+    document.querySelectorAll(".filters button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    renderCharts();
+    renderAvgs();
+    renderTable();
+  });
+});
+
+// OS のライト/ダーク切替に追従して再描画（色は CSS 変数から再取得）
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (rows.length) renderCharts();
+});
+
+const noticeEl = document.getElementById("notice");
+const authEl = document.getElementById("auth");
+
+function showAuth(message) {
+  noticeEl.textContent = message || "";
+  noticeEl.hidden = !message;
+  authEl.hidden = false;
+  document.getElementById("content").hidden = true;
+}
+
+async function load() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) { showAuth(""); return; }
+  authEl.hidden = true;
+  noticeEl.hidden = false;
+  noticeEl.textContent = "読み込み中…";
+  try {
+    const res = await fetch(CSV_API, {
+      cache: "no-cache",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.raw+json",
+      },
+    });
+    if (res.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
+      return;
+    }
+    if (res.status === 404) {
+      noticeEl.textContent =
+        "データが見つかりません。初回の睡眠ログ送信前か、トークンの Repository access / Contents 権限が不足しています。";
+      authEl.hidden = false;
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    rows = parseCsv(await res.text()).sort((a, b) => a.date.localeCompare(b.date));
+    if (!rows.length) { noticeEl.textContent = "データがまだありません。"; return; }
+    noticeEl.hidden = true;
+    document.getElementById("content").hidden = false;
+    renderAll();
+  } catch (e) {
+    noticeEl.textContent = `読み込みに失敗しました: ${e.message}`;
+  }
+}
+
+document.getElementById("saveToken").addEventListener("click", () => {
+  const t = document.getElementById("tokenInput").value.trim();
+  if (!t) return;
+  localStorage.setItem(TOKEN_KEY, t);
+  document.getElementById("tokenInput").value = "";
+  load();
+});
+
+document.getElementById("changeToken").addEventListener("click", (e) => {
+  e.preventDefault();
+  showAuth("新しいトークンを入力してください。");
+});
+
+load();
+</script>
+</body>
+</html>
