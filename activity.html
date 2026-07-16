@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アクティビティダッシュボード | LIFE</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --steps:          #2a78d6;  /* categorical slot 1 */
+    --energy:         #eda100;  /* slot 4 */
+    --exercise:       #1baf7a;  /* slot 5 */
+    --stand:          #4a3aa7;  /* slot 7 */
+    --rhr:            #e87ba4;  /* slot 3 */
+    --good:           #006300;
+    --bad:            #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --steps:          #3987e5;
+      --energy:         #c98500;
+      --exercise:       #199e70;
+      --stand:          #9085e9;
+      --rhr:            #d55181;
+      --good:           #0ca30c;
+      --bad:            #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 16px;
+    max-width: 720px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 1.2rem; margin: 0 0 2px; }
+  .sub { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile {
+    background: var(--page);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .tile .label { color: var(--text-muted); font-size: 0.7rem; }
+  .tile .value { font-size: 1.15rem; font-weight: 700; margin-top: 2px; }
+  .tile .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); }
+  .tile.hero { grid-column: span 3; display: flex; align-items: baseline; gap: 12px; }
+  .tile.hero .value { font-size: 2rem; }
+  .workouts { font-size: 0.85rem; }
+  .workouts li { margin: 2px 0; color: var(--text-secondary); }
+  .workouts li strong { color: var(--text-primary); font-weight: 600; }
+  .filters { display: flex; gap: 6px; margin: 8px 0 12px; }
+  .filters button {
+    flex: 1;
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] {
+    color: var(--text-primary);
+    font-weight: 700;
+    border-color: var(--baseline);
+  }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .card h2 { font-size: 0.9rem; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+  .chart-wrap { position: relative; height: 170px; }
+  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .daynav h2 { flex: 1; text-align: center; margin: 0; color: var(--text-primary); }
+  .daynav button {
+    background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+    width: 40px; height: 32px; font-size: 1rem; cursor: pointer;
+  }
+  .daynav button:disabled { opacity: 0.3; cursor: default; }
+  .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
+  .avgs dt { color: var(--text-muted); font-size: 0.7rem; }
+  .avgs dd { margin: 0 0 4px; font-weight: 700; }
+  details { margin-top: 4px; }
+  summary { color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; padding: 4px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.75rem; white-space: nowrap; width: 100%; }
+  th, td { padding: 4px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--baseline); }
+  td { border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  .notice { color: var(--text-secondary); padding: 24px 8px; text-align: center; }
+  a { color: var(--steps); }
+</style>
+</head>
+<body>
+<h1>アクティビティダッシュボード</h1>
+<div class="sub">データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新） / <a href="index.html">睡眠 ›</a> / <a href="#" id="changeToken">トークン変更</a></div>
+
+<div id="auth" class="card" hidden>
+  <h2>アクセストークンの設定（初回のみ）</h2>
+  <p style="font-size:0.85rem; color:var(--text-secondary)">
+    private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+    発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+    Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+    <strong>Contents: Read-only のみ</strong>にしてください。
+    トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+  </p>
+  <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"
+    style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px;
+           background:var(--page); color:var(--text-primary); margin-bottom:8px;">
+  <button id="saveToken" style="width:100%; padding:10px; border:1px solid var(--baseline);
+    border-radius:8px; background:var(--surface-1); color:var(--text-primary);
+    font-weight:700; cursor:pointer;">保存して表示</button>
+</div>
+
+<div id="notice" class="notice">読み込み中…</div>
+
+<div id="content" hidden>
+  <div class="card" id="dayCard">
+    <div class="daynav">
+      <button id="prevDay" aria-label="前の日">‹</button>
+      <h2 id="dayTitle"></h2>
+      <button id="nextDay" aria-label="次の日">›</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div id="dayWorkouts"></div>
+  </div>
+
+  <div class="filters" role="group" aria-label="期間">
+    <button data-days="7" aria-pressed="true">7日</button>
+    <button data-days="30" aria-pressed="false">30日</button>
+    <button data-days="90" aria-pressed="false">90日</button>
+  </div>
+
+  <div class="card">
+    <h2>歩数</h2>
+    <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>アクティブエネルギー（kcal）</h2>
+    <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>エクササイズ時間（分）</h2>
+    <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>スタンド時間（分）</h2>
+    <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>安静時心拍数（bpm）</h2>
+    <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>期間平均（記録がある日のみ）</h2>
+    <dl class="avgs" id="avgs"></dl>
+  </div>
+
+  <details>
+    <summary>詳細テーブル（全指標）</summary>
+    <div class="table-wrap"><table id="dataTable"></table></div>
+  </details>
+</div>
+
+<script>
+"use strict";
+// private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
+const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/health/";
+const METRICS_API = API_BASE + "metrics-daily.csv?ref=main";
+const LOG_API = API_BASE + "health-log.csv?ref=main";
+const WORKOUTS_API = API_BASE + "workouts.csv?ref=main";
+const TOKEN_KEY = "life_dashboard_pat"; // 睡眠ページと共用
+
+let rows = [];         // 日付昇順の統合行 {date, steps, active_kcal, stand_min, resting_hr, exercise_min}
+let workoutMap = {};   // date -> [{time, type, duration_min}]
+let selIdx = -1;
+let rangeDays = 7;
+let charts = [];
+
+const cssVar = (name) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const fmtMin = (m) => {
+  m = Math.round(m);
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h}時間${r}分` : `${h}時間`) : `${r}分`;
+};
+const fmtInt = (n) => Number(n).toLocaleString("ja-JP");
+const WDAY = ["日", "月", "火", "水", "木", "金", "土"];
+// YYYY-MM-DD を UTC としてパースし曜日を得る（端末 TZ に依存しない）
+const weekday = (d) => {
+  const [y, mo, da] = d.split("-").map(Number);
+  return WDAY[new Date(Date.UTC(y, mo - 1, da)).getUTCDay()];
+};
+const fmtDateShort = (d) => `${d.slice(5).replace("-", "/")}(${weekday(d)})`;
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/).map((l) => l.replace(/\r$/, ""));
+  const head = lines[0].split(",");
+  return lines.slice(1).map((l) => {
+    const cells = l.split(",");
+    return Object.fromEntries(head.map((k, i) => [k, cells[i] ?? ""]));
+  });
+}
+
+// metrics-daily / health-log(exercise_min) / workouts を日付キーで統合する
+function buildRows(metrics, log, workouts) {
+  const map = {};
+  const at = (d) => (map[d] ??= {
+    date: d, steps: "", active_kcal: "", stand_min: "", resting_hr: "", exercise_min: "",
+  });
+  for (const r of metrics || []) {
+    Object.assign(at(r.date), {
+      steps: r.steps, active_kcal: r.active_kcal,
+      stand_min: r.stand_min, resting_hr: r.resting_hr,
+    });
+  }
+  for (const r of log || []) {
+    if ((r.exercise_min || "") !== "") at(r.date).exercise_min = r.exercise_min;
+  }
+  workoutMap = {};
+  for (const w of workouts || []) {
+    (workoutMap[w.date] ??= []).push(w);
+    at(w.date); // ワークアウトだけの日も日ナビに出す
+  }
+  return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function visibleRows() {
+  return rows.slice(-rangeDays);
+}
+
+// ---------- 一日のアクティビティ（タイル + ワークアウト） ----------
+
+const tile = (label, value, unit) => `
+  <div class="tile"><div class="label">${label}</div>
+    <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
+
+function renderDay() {
+  const r = rows[selIdx];
+  document.getElementById("dayTitle").textContent = `${r.date} のアクティビティ`;
+  document.getElementById("prevDay").disabled = selIdx <= 0;
+  document.getElementById("nextDay").disabled = selIdx >= rows.length - 1;
+
+  document.getElementById("tiles").innerHTML = `
+    <div class="tile hero">
+      <div>
+        <div class="label">歩数</div>
+        <div class="value">${r.steps === "" ? "−" : fmtInt(r.steps)}<small> 歩</small></div>
+      </div>
+    </div>
+    ${tile("エクササイズ", r.exercise_min, "分")}
+    ${tile("アクティブ", r.active_kcal, "kcal")}
+    ${tile("スタンド", r.stand_min, "分")}
+    ${tile("安静時心拍", r.resting_hr, "bpm")}
+    ${tile("ワークアウト", (workoutMap[r.date] || []).length || "", "件")}`;
+
+  const ws = workoutMap[r.date] || [];
+  document.getElementById("dayWorkouts").innerHTML = ws.length
+    ? `<ul class="workouts">${ws.map((w) =>
+        `<li>${w.time.slice(0, 5)} <strong>${w.type}</strong> ${fmtMin(w.duration_min)}</li>`).join("")}</ul>`
+    : "";
+}
+
+// ---------- 期間サマリ ----------
+
+function avgOf(key) {
+  const vals = visibleRows().map((r) => r[key]).filter((x) => x !== "").map(Number);
+  return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : null;
+}
+
+function renderAvgs() {
+  const v = visibleRows();
+  const steps = avgOf("steps"), kcal = avgOf("active_kcal");
+  const ex = avgOf("exercise_min"), stand = avgOf("stand_min"), rhr = avgOf("resting_hr");
+  const exDays = v.filter((r) => Number(r.exercise_min) > 0).length;
+  const wCount = v.reduce((s, r) => s + (workoutMap[r.date] || []).length, 0);
+  document.getElementById("avgs").innerHTML = `
+    <div><dt>平均歩数</dt><dd>${steps === null ? "−" : fmtInt(Math.round(steps)) + " 歩"}</dd></div>
+    <div><dt>平均アクティブエネルギー</dt><dd>${kcal === null ? "−" : Math.round(kcal) + " kcal"}</dd></div>
+    <div><dt>平均エクササイズ</dt><dd>${ex === null ? "−" : fmtMin(ex)}</dd></div>
+    <div><dt>運動日</dt><dd>${exDays} / ${v.length} 日</dd></div>
+    <div><dt>平均スタンド</dt><dd>${stand === null ? "−" : fmtMin(stand)}</dd></div>
+    <div><dt>平均安静時心拍</dt><dd>${rhr === null ? "−" : Math.round(rhr) + " bpm"}</dd></div>
+    <div><dt>ワークアウト</dt><dd>${wCount} 件</dd></div>`;
+}
+
+function renderTable() {
+  const head = ["日付", "歩数", "kcal", "運動", "スタンド", "心拍", "ワークアウト"];
+  const body = [...visibleRows()].reverse().map((r) => `<tr>
+    <td>${r.date}</td><td>${r.steps === "" ? "" : fmtInt(r.steps)}</td>
+    <td>${r.active_kcal}</td><td>${r.exercise_min && r.exercise_min + "分"}</td>
+    <td>${r.stand_min && r.stand_min + "分"}</td><td>${r.resting_hr}</td>
+    <td>${(workoutMap[r.date] || []).map((w) => w.type).join("・")}</td></tr>`).join("");
+  document.getElementById("dataTable").innerHTML =
+    `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
+}
+
+// ---------- チャート ----------
+
+function baseOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false } }, // 各チャート単一系列。タイトルが系列名を兼ねる
+    scales: {
+      x: {
+        grid: { display: false },
+        border: { color: cssVar("--baseline") },
+        ticks: { color: cssVar("--text-muted"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: cssVar("--grid") }, border: { display: false },
+        ticks: { color: cssVar("--text-muted"), font: { size: 10 } },
+      },
+    },
+  };
+}
+
+function barChart(canvasId, key, colorVar, tipFmt) {
+  const v = visibleRows();
+  const o = baseOptions();
+  o.plugins.tooltip = { callbacks: { label: (c) => ` ${tipFmt(c.parsed.y)}` } };
+  return new Chart(document.getElementById(canvasId), {
+    type: "bar",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [{
+        data: v.map((r) => (r[key] === "" ? null : Number(r[key]))),
+        backgroundColor: cssVar(colorVar),
+        borderRadius: 4, borderSkipped: false, maxBarThickness: 26,
+      }],
+    },
+    options: o,
+  });
+}
+
+function renderCharts() {
+  charts.forEach((c) => c.destroy());
+  const v = visibleRows();
+
+  charts = [
+    barChart("stepsChart", "steps", "--steps", (y) => `${fmtInt(y)} 歩`),
+    barChart("energyChart", "active_kcal", "--energy", (y) => `${y} kcal`),
+    barChart("exerciseChart", "exercise_min", "--exercise", (y) => fmtMin(y)),
+    barChart("standChart", "stand_min", "--stand", (y) => fmtMin(y)),
+  ];
+
+  // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
+  const o = baseOptions();
+  o.scales.y.beginAtZero = false;
+  o.scales.y.suggestedMin = 40;
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 安静時心拍: ${c.parsed.y} bpm` } };
+  charts.push(new Chart(document.getElementById("rhrChart"), {
+    type: "line",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [{
+        data: v.map((r) => (r.resting_hr === "" ? null : Number(r.resting_hr))),
+        borderColor: cssVar("--rhr"), backgroundColor: cssVar("--rhr"),
+        borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+      }],
+    },
+    options: o,
+  }));
+}
+
+function renderAll() {
+  renderDay();
+  renderCharts();
+  renderAvgs();
+  renderTable();
+}
+
+// ---------- 操作 ----------
+
+document.getElementById("prevDay").addEventListener("click", () => {
+  if (selIdx > 0) { selIdx--; renderDay(); }
+});
+document.getElementById("nextDay").addEventListener("click", () => {
+  if (selIdx < rows.length - 1) { selIdx++; renderDay(); }
+});
+// スワイプで日を切り替え（左スワイプ = 翌日、右スワイプ = 前日）
+let touchX = null;
+const dayCard = document.getElementById("dayCard");
+dayCard.addEventListener("touchstart", (e) => { touchX = e.changedTouches[0].clientX; }, { passive: true });
+dayCard.addEventListener("touchend", (e) => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  touchX = null;
+  if (Math.abs(dx) < 40) return;
+  if (dx < 0 && selIdx < rows.length - 1) { selIdx++; renderDay(); }
+  else if (dx > 0 && selIdx > 0) { selIdx--; renderDay(); }
+}, { passive: true });
+
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    rangeDays = Number(btn.dataset.days);
+    document.querySelectorAll(".filters button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    renderCharts();
+    renderAvgs();
+    renderTable();
+  });
+});
+
+// OS のライト/ダーク切替に追従して再描画（色は CSS 変数から再取得）
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (rows.length) { renderCharts(); renderDay(); }
+});
+
+// ---------- データ取得 ----------
+
+const noticeEl = document.getElementById("notice");
+const authEl = document.getElementById("auth");
+
+function showAuth(message) {
+  noticeEl.textContent = message || "";
+  noticeEl.hidden = !message;
+  authEl.hidden = false;
+  document.getElementById("content").hidden = true;
+}
+
+async function fetchCsv(url, token) {
+  const res = await fetch(url, {
+    cache: "no-cache",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github.raw+json",
+    },
+  });
+  if (res.status === 404) return null;
+  if (res.status === 401) throw Object.assign(new Error("unauthorized"), { auth: true });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseCsv(await res.text());
+}
+
+async function load() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) { showAuth(""); return; }
+  authEl.hidden = true;
+  noticeEl.hidden = false;
+  noticeEl.textContent = "読み込み中…";
+  try {
+    const [metrics, log, workouts] = await Promise.all([
+      fetchCsv(METRICS_API, token),
+      fetchCsv(LOG_API, token),
+      fetchCsv(WORKOUTS_API, token),
+    ]);
+    rows = buildRows(metrics, log, workouts);
+    if (!rows.length) {
+      noticeEl.textContent =
+        "データがまだありません。ショートカットからの初回送信後に表示されます（docs/ops/ios-shortcut-health-metrics-log.md）。";
+      return;
+    }
+    selIdx = rows.length - 1;
+    noticeEl.hidden = true;
+    document.getElementById("content").hidden = false;
+    renderAll();
+  } catch (e) {
+    if (e.auth) {
+      localStorage.removeItem(TOKEN_KEY);
+      showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
+      return;
+    }
+    noticeEl.textContent = `読み込みに失敗しました: ${e.message}`;
+  }
+}
+
+document.getElementById("saveToken").addEventListener("click", () => {
+  const t = document.getElementById("tokenInput").value.trim();
+  if (!t) return;
+  localStorage.setItem(TOKEN_KEY, t);
+  document.getElementById("tokenInput").value = "";
+  load();
+});
+
+document.getElementById("changeToken").addEventListener("click", (e) => {
+  e.preventDefault();
+  showAuth("新しいトークンを入力してください。");
+});
+
+load();
+</script>
+</body>
+</html>
