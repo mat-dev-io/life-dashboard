@@ -177,11 +177,6 @@
     <button data-days="90" aria-pressed="false">90日</button>
   </div>
 
-  <div class="card">
-    <h2>睡眠時間と内訳（点線 = 目標 7 時間）</h2>
-    <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
-  </div>
-
   <div class="card" id="patternCard">
     <h2>睡眠パターン（縦軸 = 時刻、各日のステータス遷移）</h2>
     <div class="legend">
@@ -191,6 +186,11 @@
       <span style="--c:var(--deep)">深い睡眠</span>
     </div>
     <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>睡眠時間と内訳（点線 = 目標 7 時間）</h2>
+    <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
   </div>
 
   <div class="card">
