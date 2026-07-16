@@ -21,6 +21,7 @@
     --exercise:       #1baf7a;  /* slot 5 */
     --stand:          #4a3aa7;  /* slot 7 */
     --rhr:            #e87ba4;  /* slot 3 */
+    --hrv:            #008300;  /* slot 2 */
     --good:           #006300;
     --bad:            #d03b3b;
   }
@@ -40,6 +41,7 @@
       --exercise:       #199e70;
       --stand:          #9085e9;
       --rhr:            #d55181;
+      --hrv:            #0ca30c;
       --good:           #0ca30c;
       --bad:            #e66767;
     }
@@ -185,6 +187,11 @@
   </div>
 
   <div class="card">
+    <h2>心拍変動 HRV（ms。薄い点 = 日次中央値、線 = 7日移動平均）</h2>
+    <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+  </div>
+
+  <div class="card">
     <h2>期間平均（記録がある日のみ）</h2>
     <dl class="avgs" id="avgs"></dl>
   </div>
@@ -240,12 +247,13 @@ function parseCsv(text) {
 function buildRows(metrics, log, workouts) {
   const map = {};
   const at = (d) => (map[d] ??= {
-    date: d, steps: "", active_kcal: "", stand_min: "", resting_hr: "", exercise_min: "",
+    date: d, steps: "", active_kcal: "", stand_min: "", resting_hr: "", hrv_ms: "", exercise_min: "",
   });
   for (const r of metrics || []) {
     Object.assign(at(r.date), {
       steps: r.steps, active_kcal: r.active_kcal,
       stand_min: r.stand_min, resting_hr: r.resting_hr,
+      hrv_ms: r.hrv_ms ?? "", // 列追加前の CSV には無い
     });
   }
   for (const r of log || []) {
@@ -286,6 +294,7 @@ function renderDay() {
     ${tile("アクティブ", r.active_kcal, "kcal")}
     ${tile("スタンド", r.stand_min, "分")}
     ${tile("安静時心拍", r.resting_hr, "bpm")}
+    ${tile("心拍変動", r.hrv_ms, "ms")}
     ${tile("ワークアウト", (workoutMap[r.date] || []).length || "", "件")}`;
 
   const ws = workoutMap[r.date] || [];
@@ -306,6 +315,7 @@ function renderAvgs() {
   const v = visibleRows();
   const steps = avgOf("steps"), kcal = avgOf("active_kcal");
   const ex = avgOf("exercise_min"), stand = avgOf("stand_min"), rhr = avgOf("resting_hr");
+  const hrv = avgOf("hrv_ms");
   const exDays = v.filter((r) => Number(r.exercise_min) > 0).length;
   const wCount = v.reduce((s, r) => s + (workoutMap[r.date] || []).length, 0);
   document.getElementById("avgs").innerHTML = `
@@ -315,15 +325,17 @@ function renderAvgs() {
     <div><dt>運動日</dt><dd>${exDays} / ${v.length} 日</dd></div>
     <div><dt>平均スタンド</dt><dd>${stand === null ? "−" : fmtMin(stand)}</dd></div>
     <div><dt>平均安静時心拍</dt><dd>${rhr === null ? "−" : Math.round(rhr) + " bpm"}</dd></div>
+    <div><dt>平均心拍変動</dt><dd>${hrv === null ? "−" : Math.round(hrv) + " ms"}</dd></div>
     <div><dt>ワークアウト</dt><dd>${wCount} 件</dd></div>`;
 }
 
 function renderTable() {
-  const head = ["日付", "歩数", "kcal", "運動", "スタンド", "心拍", "ワークアウト"];
+  const head = ["日付", "歩数", "kcal", "運動", "スタンド", "心拍", "HRV", "ワークアウト"];
   const body = [...visibleRows()].reverse().map((r) => `<tr>
     <td>${r.date}</td><td>${r.steps === "" ? "" : fmtInt(r.steps)}</td>
     <td>${r.active_kcal}</td><td>${r.exercise_min && r.exercise_min + "分"}</td>
     <td>${r.stand_min && r.stand_min + "分"}</td><td>${r.resting_hr}</td>
+    <td>${r.hrv_ms}</td>
     <td>${(workoutMap[r.date] || []).map((w) => w.type).join("・")}</td></tr>`).join("");
   document.getElementById("dataTable").innerHTML =
     `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
@@ -382,7 +394,7 @@ function renderCharts() {
   ];
 
   // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
-  const o = baseOptions();
+  let o = baseOptions();
   o.scales.y.beginAtZero = false;
   o.scales.y.suggestedMin = 40;
   o.plugins.tooltip = { callbacks: { label: (c) => ` 安静時心拍: ${c.parsed.y} bpm` } };
@@ -395,6 +407,38 @@ function renderCharts() {
         borderColor: cssVar("--rhr"), backgroundColor: cssVar("--rhr"),
         borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
       }],
+    },
+    options: o,
+  }));
+
+  // HRV: 単日の生値はノイズが大きいため、7 日移動平均（暦日ベースの遡り窓）を
+  // 主役の線にし、日次中央値は同色の薄い点として添える
+  const dayMs = 86400000;
+  const toMs = (d) => { const [y, mo, da] = d.split("-").map(Number); return Date.UTC(y, mo - 1, da); };
+  const hrvAll = rows.filter((r) => r.hrv_ms !== "").map((r) => ({ t: toMs(r.date), v: Number(r.hrv_ms) }));
+  const ma7 = (d) => {
+    const t = toMs(d);
+    const w = hrvAll.filter((p) => p.t <= t && p.t > t - 7 * dayMs);
+    return w.length ? w.reduce((s, p) => s + p.v, 0) / w.length : null;
+  };
+  const hrvColor = cssVar("--hrv");
+  o = baseOptions();
+  o.scales.y.beginAtZero = false;
+  o.plugins.tooltip = { callbacks: { label: (c) => c.datasetIndex === 0
+    ? ` 7日平均: ${c.parsed.y.toFixed(1)} ms`
+    : ` 日次中央値: ${c.parsed.y} ms` } };
+  charts.push(new Chart(document.getElementById("hrvChart"), {
+    type: "line",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [
+        { data: v.map((r) => ma7(r.date)),
+          borderColor: hrvColor, backgroundColor: hrvColor,
+          borderWidth: 2, pointRadius: 0, spanGaps: true, tension: 0.2 },
+        { data: v.map((r) => (r.hrv_ms === "" ? null : Number(r.hrv_ms))),
+          showLine: false, pointRadius: 3,
+          borderColor: "transparent", backgroundColor: hrvColor + "66" },
+      ],
     },
     options: o,
   }));
