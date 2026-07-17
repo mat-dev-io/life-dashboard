@@ -1,0 +1,246 @@
+// ブラウザ無し環境向けの end-to-end 検証ハーネス。
+// DOM / fetch / Chart.js / localStorage をスタブし、index.html / activity.html の
+// <script> を vm で実行して、CSV 統合・欠測 null 化・移動平均・描画文字列を検証する。
+// 実行: node test/harness.mjs
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+let passed = 0;
+const failures = [];
+function assert(name, cond, detail = "") {
+  if (cond) { passed++; }
+  else { failures.push(`${name}${detail ? ` — ${detail}` : ""}`); }
+}
+
+// ---------- スタブ ----------
+
+class El {
+  constructor(id) {
+    this.id = id;
+    this.innerHTML = "";
+    this.textContent = "";
+    this.hidden = false;
+    this.disabled = false;
+    this.value = "";
+    this.dataset = {};
+    this.attrs = {};
+    this.listeners = {};
+    this.classList = { add() {}, remove() {}, contains: () => false };
+    this.style = {};
+  }
+  addEventListener(type, fn) { this.listeners[type] = fn; }
+  setAttribute(k, v) { this.attrs[k] = v; }
+  getAttribute(k) { return this.attrs[k]; }
+}
+
+function extractScript(html) {
+  const m = html.match(/<script>\s*("use strict";[\s\S]*?)<\/script>/);
+  if (!m) throw new Error("インライン <script> が見つからない");
+  return m[1];
+}
+
+function collectIds(html) {
+  return new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
+}
+
+async function runPage(file, fixtures) {
+  const html = readFileSync(join(root, file), "utf8");
+  const ids = collectIds(html);
+  const els = new Map();
+  const filterButtons = ["7", "30", "90"].map((d) => {
+    const b = new El(`filter-${d}`);
+    b.dataset.days = d;
+    return b;
+  });
+  const document = {
+    documentElement: new El("html"),
+    getElementById(id) {
+      // JS が参照する id が HTML に実在することを id 網羅チェックとして兼ねる
+      if (!ids.has(id)) throw new Error(`${file}: getElementById("${id}") が HTML に存在しない`);
+      if (!els.has(id)) els.set(id, new El(id));
+      return els.get(id);
+    },
+    querySelectorAll(sel) {
+      return sel.includes(".filters") ? filterButtons : [];
+    },
+  };
+  class ChartStub {
+    static defaults = { font: {} };
+    static created = [];
+    constructor(el, cfg) { this.el = el; this.cfg = cfg; ChartStub.created.push(this); }
+    destroy() {}
+  }
+  const sandbox = {
+    document,
+    console,
+    localStorage: { getItem: () => "dummy-token", setItem() {}, removeItem() {} },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => "#336699" }),
+    fetch: async (url) => {
+      for (const [key, csv] of Object.entries(fixtures)) {
+        if (url.includes(key)) return { ok: true, status: 200, text: async () => csv };
+      }
+      return { ok: true, status: 404, text: async () => "" };
+    },
+    Chart: ChartStub,
+    IntersectionObserver: class { observe() {} unobserve() {} },
+  };
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(extractScript(html), sandbox, { filename: file });
+  await new Promise((r) => setTimeout(r, 20)); // load() の完了を待つ
+  const chartByCanvas = (id) => ChartStub.created.filter((c) => c.el.id === id).at(-1);
+  return { els, filterButtons, ChartStub, chartByCanvas, html };
+}
+
+// ---------- 睡眠ページ ----------
+
+const sleepDaily = `date,sleep_onset,wake_time,latency_min,sleep_min,core_min,deep_min,rem_min,awake_count,awake_min,in_bed_min,efficiency_pct
+2026-07-10,23:30,06:30,10,400,250,80,70,2,20,430,93.0
+2026-07-11,00:15,07:00,5,380,240,70,70,1,10,405,93.8
+2026-07-12,23:00,06:45,8,450,280,90,80,0,0,465,96.8`;
+
+// 帰属ルール検証用: 終了 12 時前→前日 / 12 時以降→当日 / asleep→core / inbed→除外
+const sleepSamples = `date,time,state,duration_sec
+2026-07-12,23:00:00,core,3600
+2026-07-13,00:00:00,deep,1800
+2026-07-13,00:30:00,rem,900
+2026-07-13,01:00:00,awake,300
+2026-07-12,13:00:00,asleep,600
+2026-07-11,23:45:00,inbed,600`;
+
+{
+  const { els, filterButtons, ChartStub, chartByCanvas } = await runPage("index.html", {
+    "sleep-daily.csv": sleepDaily,
+    "sleep-samples.csv": sleepSamples,
+  });
+  const t = () => els.get("tiles").innerHTML;
+
+  assert("sleep: content 表示", els.get("content").hidden === false);
+  assert("sleep: 最新日タイトル", els.get("dayTitle").textContent === "2026-07-12 の睡眠");
+  assert("sleep: ヒーロー睡眠時間", t().includes("7<small>時間</small>30<small>分</small>"), t());
+  assert("sleep: 目標達成表示", t().includes("目標達成"));
+  assert("sleep: リング達成率 107%", t().includes(">107%<"));
+  assert("sleep: リング進捗は 100% で頭打ち", t().includes('stroke-dashoffset="0.00"'));
+  assert("sleep: 中途覚醒タイル", t().includes("0<small>回 / 0分</small>"));
+
+  const hypno = chartByCanvas("hypnoChart");
+  assert("sleep: 睡眠図が描画される", !!hypno);
+  const hypnoData = hypno.cfg.data.datasets[0].data;
+  assert("sleep: 睡眠図に inbed は含めない", hypnoData.length === 5, `len=${hypnoData.length}`);
+  assert("sleep: asleep→core 正規化", hypnoData.some((d) => d.state === "core" && d.x[0] === 60));
+  assert("sleep: 12:00 起点の経過分", hypnoData.some((d) => d.x[0] === 660 && d.x[1] === 720));
+
+  const stack = chartByCanvas("stackChart");
+  assert("sleep: 積み上げ 3 系列 + 目標線", stack.cfg.data.datasets.length === 4);
+  assert("sleep: deep 系列の値", JSON.stringify(stack.cfg.data.datasets[0].data) === "[80,70,90]");
+  assert("sleep: 目標線は 420 分", stack.cfg.data.datasets[3].data.every((y) => y === 420));
+
+  const time = chartByCanvas("timeChart");
+  assert("sleep: 入眠時刻の 18:00 起点写像",
+    JSON.stringify(time.cfg.data.datasets[0].data) === "[330,375,300]",
+    JSON.stringify(time.cfg.data.datasets[0].data));
+
+  const eff = chartByCanvas("effChart");
+  assert("sleep: 睡眠効率系列", JSON.stringify(eff.cfg.data.datasets[0].data) === "[93,93.8,96.8]");
+
+  const pattern = chartByCanvas("patternChart");
+  assert("sleep: パターン図の区間数", pattern.cfg.data.datasets[0].data.length === 5);
+
+  assert("sleep: 平均睡眠時間", els.get("avgs").innerHTML.includes("6時間50分"));
+  assert("sleep: 7 時間達成日数", els.get("avgs").innerHTML.includes("1 / 3 日"));
+  assert("sleep: テーブルは新しい日が先頭",
+    els.get("dataTable").innerHTML.indexOf("2026-07-12") < els.get("dataTable").innerHTML.indexOf("2026-07-10"));
+
+  // 前日へ: 未達日の表示と、サンプルが無い日の睡眠図非表示
+  els.get("prevDay").listeners.click();
+  assert("sleep: 前日タイトル", els.get("dayTitle").textContent === "2026-07-11 の睡眠");
+  assert("sleep: 目標未達の残り時間", t().includes("目標まで 40分"), t());
+  assert("sleep: リング達成率 90%", t().includes(">90%<"));
+  assert("sleep: サンプル無し日は睡眠図を隠す", els.get("hypnoBlock").hidden === true);
+
+  // 期間フィルタ: 30 日へ切替で再描画される
+  const before = ChartStub.created.length;
+  filterButtons[1].listeners.click();
+  assert("sleep: フィルタ切替で再描画", ChartStub.created.length > before);
+  assert("sleep: aria-pressed 更新", filterButtons[1].attrs["aria-pressed"] === "true"
+    && filterButtons[0].attrs["aria-pressed"] === "false");
+}
+
+// ---------- アクティビティページ ----------
+
+const metricsDaily = `date,steps,active_kcal,stand_min,resting_hr,hrv_ms
+2026-07-10,8210,320,540,58,45
+2026-07-11,12345,410,600,56,
+2026-07-12,9500,,480,57,60`;
+
+const healthLog = `date,exercise_min
+2026-07-11,30
+2026-07-13,20`;
+
+{
+  const { els, ChartStub, chartByCanvas } = await runPage("activity.html", {
+    "metrics-daily.csv": metricsDaily,
+    "health-log.csv": healthLog,
+  });
+  const t = () => els.get("tiles").innerHTML;
+
+  assert("act: content 表示", els.get("content").hidden === false);
+  assert("act: 日付ユニオン統合（log のみの日も行になる）",
+    els.get("dayTitle").textContent === "2026-07-13 のアクティビティ");
+  assert("act: 欠測歩数は −", t().includes("−"));
+
+  els.get("prevDay").listeners.click();
+  assert("act: 歩数の桁区切り", t().includes("9,500"), t());
+  assert("act: 欠測 kcal タイルは −", /アクティブ<\/div>\s*<div class="value">−/.test(t()));
+
+  const steps = chartByCanvas("stepsChart");
+  assert("act: 歩数系列（欠測は null）",
+    JSON.stringify(steps.cfg.data.datasets[0].data) === "[8210,12345,9500,null]");
+
+  const exercise = chartByCanvas("exerciseChart");
+  assert("act: 運動系列は log から統合",
+    JSON.stringify(exercise.cfg.data.datasets[0].data) === "[null,30,null,20]");
+
+  const rhr = chartByCanvas("rhrChart");
+  assert("act: 安静時心拍は折れ線 + 欠測 null",
+    rhr.cfg.type === "line" && JSON.stringify(rhr.cfg.data.datasets[0].data) === "[58,56,57,null]");
+
+  const hrv = chartByCanvas("hrvChart");
+  const ma = hrv.cfg.data.datasets[0].data;
+  assert("act: HRV 7日移動平均（45,60 → 52.5）", ma.at(-1) === 52.5 && ma.at(-2) === 52.5,
+    JSON.stringify(ma));
+  assert("act: HRV 日次点は欠測 null",
+    JSON.stringify(hrv.cfg.data.datasets[1].data) === "[45,null,60,null]");
+
+  assert("act: 運動日カウント", els.get("avgs").innerHTML.includes("2 / 4 日"));
+  assert("act: チャート数（棒4 + 心拍 + HRV）",
+    ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
+}
+
+// ---------- ページ横断の不変条件 ----------
+
+{
+  const idx = readFileSync(join(root, "index.html"), "utf8");
+  const act = readFileSync(join(root, "activity.html"), "utf8");
+  for (const [name, html] of [["index", idx], ["activity", act]]) {
+    assert(`${name}: PAT の localStorage キー共用`, html.includes('"life_dashboard_pat"'));
+    assert(`${name}: ダークモード追従`, html.includes("prefers-color-scheme: dark"));
+    assert(`${name}: モーション設定の尊重`, html.includes("prefers-reduced-motion"));
+    assert(`${name}: ビルド無し（CDN Chart.js）`, html.includes("cdn.jsdelivr.net/npm/chart.js"));
+    assert(`${name}: モバイル幅 720px`, html.includes("max-width: 720px"));
+  }
+}
+
+// ---------- 結果 ----------
+
+if (failures.length) {
+  console.error(`FAIL: ${failures.length} 件 / PASS: ${passed} 件`);
+  for (const f of failures) console.error(`  ✗ ${f}`);
+  process.exit(1);
+}
+console.log(`PASS: 全 ${passed} 件`);
