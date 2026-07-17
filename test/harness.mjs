@@ -120,13 +120,17 @@ const sleepSamples = `date,time,state,duration_sec
   });
   const t = () => els.get("tiles").innerHTML;
 
+  const ds = () => els.get("dayStats").innerHTML;
+
   assert("sleep: content 表示", els.get("content").hidden === false);
   assert("sleep: 最新日タイトル", els.get("dayTitle").textContent === "2026-07-12 の睡眠");
-  assert("sleep: ヒーロー睡眠時間", t().includes("7<small>時間</small>30<small>分</small>"), t());
+  assert("sleep: ヒーロー睡眠時間",
+    els.get("heroNum").innerHTML === "7<small>時間</small>30<small>分</small>",
+    els.get("heroNum").innerHTML);
   assert("sleep: 目標達成表示", t().includes("目標達成"));
   assert("sleep: リング達成率 107%", t().includes(">107%<"));
   assert("sleep: リング進捗は 100% で頭打ち", t().includes('stroke-dashoffset="0.00"'));
-  assert("sleep: 中途覚醒タイル", t().includes("0<small>回 / 0分</small>"));
+  assert("sleep: 中途覚醒タイル", ds().includes("0<small>回 / 0分</small>"));
 
   const hypno = chartByCanvas("hypnoChart");
   assert("sleep: 睡眠図が描画される", !!hypno);
@@ -159,6 +163,8 @@ const sleepSamples = `date,time,state,duration_sec
   // 前日へ: 未達日の表示と、サンプルが無い日の睡眠図非表示
   els.get("prevDay").listeners.click();
   assert("sleep: 前日タイトル", els.get("dayTitle").textContent === "2026-07-11 の睡眠");
+  assert("sleep: 前日のヒーロー値",
+    els.get("heroNum").innerHTML === "6<small>時間</small>20<small>分</small>");
   assert("sleep: 目標未達の残り時間", t().includes("目標まで 40分"), t());
   assert("sleep: リング達成率 90%", t().includes(">90%<"));
   assert("sleep: サンプル無し日は睡眠図を隠す", els.get("hypnoBlock").hidden === true);
@@ -188,6 +194,7 @@ const healthLog = `date,exercise_min
     "health-log.csv": healthLog,
   });
   const t = () => els.get("tiles").innerHTML;
+  const ds = () => els.get("dayStats").innerHTML;
 
   assert("act: content 表示", els.get("content").hidden === false);
   assert("act: 日付ユニオン統合（log のみの日も行になる）",
@@ -195,8 +202,9 @@ const healthLog = `date,exercise_min
   assert("act: 欠測歩数は −", t().includes("−"));
 
   els.get("prevDay").listeners.click();
-  assert("act: 歩数の桁区切り", t().includes("9,500"), t());
-  assert("act: 欠測 kcal タイルは −", /アクティブ<\/div>\s*<div class="value">−/.test(t()));
+  assert("act: 歩数の桁区切り", els.get("heroNum").innerHTML === "9,500",
+    els.get("heroNum").innerHTML);
+  assert("act: 欠測 kcal タイルは −", /アクティブ<\/div>\s*<div class="value">−/.test(ds()));
 
   const steps = chartByCanvas("stepsChart");
   assert("act: 歩数系列（欠測は null）",
@@ -233,6 +241,8 @@ const healthLog = `date,exercise_min
     assert(`${name}: モーション設定の尊重`, html.includes("prefers-reduced-motion"));
     assert(`${name}: ビルド無し（CDN Chart.js）`, html.includes("cdn.jsdelivr.net/npm/chart.js"));
     assert(`${name}: モバイル幅 720px`, html.includes("max-width: 720px"));
+    assert(`${name}: フルスクリーンヒーロー`, html.includes("hero-section"));
+    assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
   }
 }
 
