@@ -189,6 +189,8 @@
     font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
     margin: 0 0 10px; text-align: center;
   }
+  /* 見出しはフレーズ単位でのみ折り返す（1 文字だけの改行を防ぐ） */
+  .head span, .tagline span { display: inline-block; }
   .lead {
     color: var(--text-2); font-size: 1rem; line-height: 1.6;
     margin: 0 0 28px; text-align: center;
@@ -373,7 +375,7 @@
     <!-- ヒーロー: その日の活動を一つの数字で語る -->
     <section class="hero-section" id="dayCard">
       <p class="eyebrow">アクティビティ</p>
-      <h1 class="tagline">今日も、動いた。</h1>
+      <h1 class="tagline"><span>今日も、</span><span>動いた。</span></h1>
       <div class="daynav">
         <button id="prevDay" aria-label="前の日">‹</button>
         <h2 id="dayTitle"></h2>
@@ -386,7 +388,7 @@
     <!-- きょうのバンド: その日のディテール（常時ダーク） -->
     <section class="chapter band-dark" id="todayBand">
       <div class="chapter-inner">
-        <h2 class="head">きょうの、からだ。</h2>
+        <h2 class="head"><span>きょうの、</span><span>からだ。</span></h2>
         <p class="lead">活動と回復を、ひと目で。</p>
         <div class="card"><div id="dayStats"></div></div>
       </div>
@@ -403,7 +405,7 @@
     <!-- 動く: スクロール駆動ステージ -->
     <section class="chapter alt stagechapter">
       <div class="chapter-inner">
-        <h2 class="head">4つの数字。どれも正直。</h2>
+        <h2 class="head"><span>4つの数字。</span><span>どれも正直。</span></h2>
         <p class="lead">スクロールで、次の数字へ。</p>
       </div>
       <div class="stagegroup" style="--stages:4">
@@ -501,7 +503,7 @@
     <!-- 振り返り -->
     <section class="chapter">
       <div class="chapter-inner">
-        <h2 class="head">数字で、振り返る。</h2>
+        <h2 class="head"><span>数字で、</span><span>振り返る。</span></h2>
         <p class="lead">期間平均と、すべての記録。</p>
         <div class="card">
           <h3>期間平均</h3>

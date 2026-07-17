@@ -200,6 +200,8 @@
     font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
     margin: 0 0 10px; text-align: center;
   }
+  /* 見出しはフレーズ単位でのみ折り返す（1 文字だけの改行を防ぐ） */
+  .head span, .tagline span { display: inline-block; }
   .lead {
     color: var(--text-2); font-size: 1rem; line-height: 1.6;
     margin: 0 0 28px; text-align: center;
@@ -393,7 +395,7 @@
     <!-- ヒーロー: 昨夜の眠りを一つの数字で語る -->
     <section class="hero-section" id="dayCard">
       <p class="eyebrow">睡眠</p>
-      <h1 class="tagline">眠りを、味方に。</h1>
+      <h1 class="tagline"><span>眠りを、</span><span>味方に。</span></h1>
       <div class="daynav">
         <button id="prevDay" aria-label="前の日">‹</button>
         <h2 id="dayTitle"></h2>
@@ -406,7 +408,7 @@
     <!-- 夜のバンド: その一晩のディテール（常時ダーク） -->
     <section class="chapter band-dark" id="nightBand">
       <div class="chapter-inner">
-        <h2 class="head">一晩の、ものがたり。</h2>
+        <h2 class="head"><span>一晩の、</span><span>ものがたり。</span></h2>
         <p class="lead">睡眠ステージの移り変わりを、一枚の絵に。</p>
         <div class="card" id="hypnoBlock">
           <div class="legend">
@@ -432,7 +434,7 @@
     <!-- スクロール駆動ステージ: 4 つのグラフを 1 枚ずつ見せる -->
     <section class="chapter alt stagechapter">
       <div class="chapter-inner">
-        <h2 class="head">4つの視点。ひとつの眠り。</h2>
+        <h2 class="head"><span>4つの視点。</span><span>ひとつの眠り。</span></h2>
         <p class="lead">スクロールで、視点を切り替える。</p>
       </div>
       <div class="stagegroup" style="--stages:4">
@@ -498,7 +500,7 @@
     <!-- 振り返り -->
     <section class="chapter">
       <div class="chapter-inner">
-        <h2 class="head">数字で、振り返る。</h2>
+        <h2 class="head"><span>数字で、</span><span>振り返る。</span></h2>
         <p class="lead">期間平均と、すべての記録。</p>
         <div class="card">
           <h3>期間平均</h3>
