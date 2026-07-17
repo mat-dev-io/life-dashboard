@@ -315,7 +315,7 @@
   }
   .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
   .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
-  .stagepanel { display: flex; flex-direction: column; }
+  .stagepanel { display: flex; flex-direction: column; gap: 10px; }
   .stagepanel[hidden] { display: none; }
   .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
   .stagegroup.js .stagepanel {
@@ -324,13 +324,26 @@
   }
   .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
   .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
-  .stagepanel h3 {
+  .stagedesc h3 {
     text-align: center; font-size: 1.05rem; font-weight: 700;
     letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
   }
-  .stagepanel .caption { text-align: center; }
-  .stagepanel .legend { justify-content: center; }
-  .stagepanel .chart-wrap { flex: 1 1 auto; height: auto; min-height: 220px; }
+  .stagedesc .caption { text-align: center; }
+  .stagedesc .desc {
+    font-size: 0.85rem; color: var(--text-2); line-height: 1.7; margin: 6px 0 0;
+  }
+  .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .stagefig .legend { justify-content: center; margin-bottom: 4px; }
+  .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
+  @media (min-width: 640px) {
+    .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
+    .stagefig { flex: 1 1 58%; align-self: stretch; min-width: 0; }
+    .stagedesc { flex: 1 1 42%; }
+    .stagedesc h3, .stagedesc .caption { text-align: left; }
+    .stagedesc h3 { font-size: 1.35rem; }
+    .stagedesc .desc { font-size: 0.95rem; }
+  }
 
   /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
@@ -432,30 +445,50 @@
           </div>
           <div class="stagepanels">
             <div class="stagepanel" id="patternCard">
-              <h3>睡眠パターン</h3>
-              <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
-              <div class="legend">
-                <span style="--c:var(--awake)">覚醒</span>
-                <span style="--c:var(--rem)">レム</span>
-                <span style="--c:var(--core)">Core</span>
-                <span style="--c:var(--deep)">深い睡眠</span>
+              <div class="stagedesc">
+                <h3>睡眠パターン</h3>
+                <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
+                <p class="desc">毎晩のステージ遷移を日付順に並べて俯瞰します。バーの位置が揃っているほど、生活リズムは安定しています。</p>
               </div>
-              <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+              <div class="stagefig">
+                <div class="legend">
+                  <span style="--c:var(--awake)">覚醒</span>
+                  <span style="--c:var(--rem)">レム</span>
+                  <span style="--c:var(--core)">Core</span>
+                  <span style="--c:var(--deep)">深い睡眠</span>
+                </div>
+                <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>睡眠時間と内訳</h3>
-              <p class="caption">点線 = 目標 7 時間</p>
-              <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>睡眠時間と内訳</h3>
+                <p class="caption">点線 = 目標 7 時間</p>
+                <p class="desc">一晩を深い睡眠・Core・レムに分解し、点線の目標 7 時間と比べます。まず、棒が点線に届いているかを見ます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>入眠・起床時刻</h3>
-              <p class="caption">就寝リズムのぶれを見る</p>
-              <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>入眠・起床時刻</h3>
+                <p class="caption">就寝リズムのぶれを見る</p>
+                <p class="desc">入眠と起床を折れ線で追跡します。線が水平に近いほどリズムは一定。ぶれた週は、就寝時刻から整えるのが近道です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>睡眠効率</h3>
-              <p class="caption">在床時間に占める実睡眠の割合（%）</p>
-              <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>睡眠効率</h3>
+                <p class="caption">在床時間に占める実睡眠の割合（%）</p>
+                <p class="desc">ベッドにいた時間のうち、実際に眠れていた割合。90% 前後が目安で、低い日は寝つきの遅さか中途覚醒が原因です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+              </div>
             </div>
           </div>
         </div>

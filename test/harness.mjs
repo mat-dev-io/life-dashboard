@@ -260,6 +260,15 @@ const healthLog = `date,exercise_min
         `tabs=${tabs}`);
     });
   }
+  // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
+  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6]]) {
+    const descs = (html.match(/class="stagedesc"/g) || []).length;
+    const figs = (html.match(/class="stagefig"/g) || []).length;
+    const bodies = (html.match(/class="desc"/g) || []).length;
+    assert(`${name}: 説明カラム ${total} 個`, descs === total, `descs=${descs}`);
+    assert(`${name}: グラフカラム ${total} 個`, figs === total, `figs=${figs}`);
+    assert(`${name}: 説明本文 ${total} 個`, bodies === total, `bodies=${bodies}`);
+  }
 }
 
 // ---------- 結果 ----------

@@ -296,7 +296,7 @@
   }
   .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
   .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
-  .stagepanel { display: flex; flex-direction: column; }
+  .stagepanel { display: flex; flex-direction: column; gap: 10px; }
   .stagepanel[hidden] { display: none; }
   .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
   .stagegroup.js .stagepanel {
@@ -305,12 +305,25 @@
   }
   .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
   .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
-  .stagepanel h3 {
+  .stagedesc h3 {
     text-align: center; font-size: 1.05rem; font-weight: 700;
     letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
   }
-  .stagepanel .caption { text-align: center; }
-  .stagepanel .chart-wrap { flex: 1 1 auto; height: auto; min-height: 220px; }
+  .stagedesc .caption { text-align: center; }
+  .stagedesc .desc {
+    font-size: 0.85rem; color: var(--text-2); line-height: 1.7; margin: 6px 0 0;
+  }
+  .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
+  @media (min-width: 640px) {
+    .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
+    .stagefig { flex: 1 1 58%; align-self: stretch; min-width: 0; }
+    .stagedesc { flex: 1 1 42%; }
+    .stagedesc h3, .stagedesc .caption { text-align: left; }
+    .stagedesc h3 { font-size: 1.35rem; }
+    .stagedesc .desc { font-size: 0.95rem; }
+  }
 
   /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
@@ -403,24 +416,44 @@
           </div>
           <div class="stagepanels">
             <div class="stagepanel">
-              <h3>歩数</h3>
-              <p class="caption">日ごとの合計</p>
-              <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>歩数</h3>
+                <p class="caption">日ごとの合計</p>
+                <p class="desc">一日の合計歩数。絶対量より先に、ゼロの日をつくらないことから始めます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>アクティブエネルギー</h3>
-              <p class="caption">kcal</p>
-              <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>アクティブエネルギー</h3>
+                <p class="caption">kcal</p>
+                <p class="desc">安静時を上回って使ったエネルギー。動いた強度が、そのまま反映されます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>エクササイズ時間</h3>
-              <p class="caption">分</p>
-              <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>エクササイズ時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">早歩き以上の運動として記録された時間。週 5 日の実施が目標です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>スタンド時間</h3>
-              <p class="caption">分</p>
-              <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>スタンド時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">立って動いていた時間。座りっぱなしの日は、ここが正直に凹みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+              </div>
             </div>
           </div>
         </div>
@@ -441,14 +474,24 @@
           </div>
           <div class="stagepanels">
             <div class="stagepanel">
-              <h3>安静時心拍数</h3>
-              <p class="caption">bpm</p>
-              <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>安静時心拍数</h3>
+                <p class="caption">bpm</p>
+                <p class="desc">安静時の心拍数。ゆっくり下がる傾向は体力向上のサイン、急な上昇は疲労や体調変化の合図です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+              </div>
             </div>
             <div class="stagepanel">
-              <h3>心拍変動 HRV</h3>
-              <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
-              <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+              <div class="stagedesc">
+                <h3>心拍変動 HRV</h3>
+                <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
+                <p class="desc">心拍のゆらぎは、自律神経の回復力の指標。単日ではなく、7 日移動平均（線）の傾きで読みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+              </div>
             </div>
           </div>
         </div>
