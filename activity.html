@@ -11,6 +11,7 @@
   :root {
     color-scheme: light;
     --page:        #fbfbfd;
+    --page-alt:    #f5f5f7;
     --surface:     #ffffff;
     --text:        #1d1d1f;
     --text-2:      #6e6e73;
@@ -22,6 +23,7 @@
     --seg-active:  #ffffff;
     --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
     --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
+    --glow:        rgba(42,120,214,0.10);
     --grad-a:      #2a78d6;
     --grad-b:      #4a3aa7;
     --grid:        #e8e8ed;
@@ -40,6 +42,7 @@
     :root {
       color-scheme: dark;
       --page:        #000000;
+      --page-alt:    #161617;
       --surface:     #1c1c1e;
       --text:        #f5f5f7;
       --text-2:      #a1a1a6;
@@ -51,6 +54,7 @@
       --seg-active:  #636366;
       --seg-shadow:  none;
       --card-shadow: none;
+      --glow:        rgba(57,135,229,0.16);
       --grad-a:      #3987e5;
       --grad-b:      #9085e9;
       --grid:        #2c2c2e;
@@ -65,6 +69,30 @@
       --bad:         #e66767;
     }
   }
+  /* 常時ダークのバンド。中のチャートはこのスコープの変数（ダーク検証済み配色）を読む */
+  .band-dark {
+    --page:        #000000;
+    --surface:     #1c1c1e;
+    --text:        #f5f5f7;
+    --text-2:      #a1a1a6;
+    --text-3:      #86868b;
+    --sep:         rgba(255,255,255,0.14);
+    --fill:        rgba(120,120,128,0.24);
+    --seg-active:  #636366;
+    --seg-shadow:  none;
+    --card-shadow: none;
+    --grid:        #2c2c2e;
+    --baseline:    #3a3a3c;
+    --steps:       #3987e5;
+    --energy:      #c98500;
+    --exercise:    #199e70;
+    --stand:       #9085e9;
+    --rhr:         #d55181;
+    --hrv:         #0ca30c;
+    background: #000;
+    color: var(--text);
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -89,21 +117,82 @@
   .topbar-inner {
     max-width: 720px; margin-inline: auto;
     display: flex; align-items: center; gap: 20px;
-    padding: 10px 16px;
+    height: 44px; padding: 0 16px;
   }
   .brand { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; }
   .topnav { margin-left: auto; display: flex; gap: 18px; font-size: 0.85rem; }
   .topnav a { color: var(--text-2); text-decoration: none; }
   .topnav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 
-  main { max-width: 720px; margin-inline: auto; padding: 0 16px; }
+  .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
 
-  .pagehead { text-align: center; padding: 28px 0 20px; }
-  .pagehead h1 {
-    margin: 0; font-size: clamp(1.9rem, 8vw, 2.4rem);
-    font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+  /* フルスクリーンヒーロー */
+  .hero-section {
+    position: relative;
+    min-height: max(560px, 92svh);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 48px 16px 72px;
+    overflow: hidden;
   }
-  .pagesub { margin: 6px 0 0; color: var(--text-2); font-size: 0.9rem; }
+  .hero-section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(60% 45% at 50% 38%, var(--glow), transparent 70%);
+  }
+  .hero-section > * { position: relative; }
+  .eyebrow {
+    font-size: 0.8rem; font-weight: 600; color: var(--text-3);
+    letter-spacing: 0.14em; margin: 0 0 12px;
+  }
+  .tagline {
+    font-size: clamp(2.3rem, 11vw, 3.4rem);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
+    margin: 0 0 22px;
+  }
+  .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px; }
+  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 11em; }
+  .daynav button {
+    width: 32px; height: 32px; border: 0; border-radius: 50%;
+    background: var(--fill); color: var(--text);
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
+  }
+  .daynav button:disabled { opacity: 0.3; cursor: default; }
+
+  .hero-label { font-size: 0.8rem; color: var(--text-3); }
+  .hero-value {
+    font-size: clamp(3rem, 16vw, 4.4rem);
+    font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-value small { font-size: 0.42em; font-weight: 700; }
+
+  .scrollcue {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: var(--text-3); font-size: 1.5rem; line-height: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .scrollcue { animation: cue 2.2s ease-in-out infinite; }
+    @keyframes cue {
+      0%, 100% { transform: translate(-50%, 0); opacity: 0.9; }
+      50%      { transform: translate(-50%, 8px); opacity: 0.4; }
+    }
+  }
+
+  /* 章（チャンク化）: 大見出しの断定コピー + リード + コンテンツ */
+  .chapter { padding: 64px 16px; }
+  .chapter.alt { background: var(--page-alt); }
+  .band-dark.chapter { border-block: 1px solid rgba(255,255,255,0.08); }
+  .chapter-inner { max-width: 720px; margin-inline: auto; }
+  .head {
+    font-size: clamp(1.9rem, 9vw, 2.7rem);
+    font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
+    margin: 0 0 10px; text-align: center;
+  }
+  .lead {
+    color: var(--text-2); font-size: 1rem; line-height: 1.6;
+    margin: 0 0 28px; text-align: center;
+  }
 
   .card {
     background: var(--surface);
@@ -112,35 +201,14 @@
     margin-bottom: 14px;
     box-shadow: var(--card-shadow);
   }
-  .card h2 {
+  .card h3 {
     font-size: 0.95rem; font-weight: 600; margin: 0 0 2px;
     color: var(--text); letter-spacing: -0.01em;
   }
   .caption { font-size: 0.75rem; color: var(--text-3); margin: 0 0 10px; }
   .chart-wrap { position: relative; height: 170px; }
 
-  /* 一日ビュー: 日送り + ヒーロー + 指標グリッド */
-  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .daynav h2 { flex: 1; text-align: center; margin: 0; font-size: 0.95rem; font-weight: 600; }
-  .daynav button {
-    width: 32px; height: 32px; border: 0; border-radius: 50%;
-    background: var(--fill); color: var(--text);
-    font-size: 1.05rem; line-height: 1; cursor: pointer;
-  }
-  .daynav button:disabled { opacity: 0.3; cursor: default; }
-
-  .hero { padding: 6px 4px 2px; }
-  .hero-label { font-size: 0.75rem; color: var(--text-3); }
-  .hero-value {
-    font-size: clamp(2.4rem, 11vw, 3.2rem);
-    font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .hero-value small { font-size: 0.45em; font-weight: 700; }
-
-  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px; }
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); }
   .stat { padding: 10px 12px; }
   .stat:not(:nth-child(3n+1)) { border-left: 1px solid var(--sep); }
   .stat:nth-child(n+4) { border-top: 1px solid var(--sep); }
@@ -151,10 +219,18 @@
   }
   .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
 
-  /* iOS 風セグメンテッドコントロール */
+  /* 期間フィルタ: トップバー下に張り付く iOS 風セグメンテッドコントロール */
+  .filterbar {
+    position: sticky; top: 45px; z-index: 9;
+    padding: 8px 16px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
   .filters {
     display: flex; background: var(--fill); border-radius: 10px;
-    padding: 2px; margin: 20px 0 16px;
+    padding: 2px; max-width: 400px; margin-inline: auto;
   }
   .filters button {
     flex: 1; border: 0; background: transparent; color: var(--text);
@@ -196,15 +272,16 @@
   .foot {
     max-width: 720px; margin-inline: auto;
     color: var(--text-3); font-size: 0.75rem; line-height: 1.8;
-    text-align: center; padding: 24px 16px 44px;
+    text-align: center; padding: 32px 16px 48px;
   }
   .foot a { color: var(--text-3); }
 
-  /* スクロールで現れるカード（モーション設定を尊重） */
+  /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
-    .reveal { opacity: 0; transform: translateY(14px);
-              transition: opacity 0.5s ease, transform 0.5s ease; }
+    .reveal { opacity: 0; transform: translateY(18px);
+              transition: opacity 0.6s ease, transform 0.6s ease; }
     .reveal.in { opacity: 1; transform: none; }
+    .lead.reveal { transition-delay: 0.08s; }
   }
 </style>
 </head>
@@ -220,88 +297,117 @@
 </header>
 
 <main>
-  <div class="pagehead">
-    <h1>アクティビティ</h1>
-    <p class="pagesub">日々の活動量と、心拍の傾向。</p>
+  <div class="narrow">
+    <div id="auth" class="card auth" hidden>
+      <h3>アクセストークンの設定（初回のみ）</h3>
+      <p>
+        private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+        発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+        Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+        <strong>Contents: Read-only のみ</strong>にしてください。
+        トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+      </p>
+      <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+      <button id="saveToken">保存して表示</button>
+    </div>
+    <div id="notice" class="notice">読み込み中…</div>
   </div>
-
-  <div id="auth" class="card auth" hidden>
-    <h2>アクセストークンの設定（初回のみ）</h2>
-    <p>
-      private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
-      発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
-      Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
-      <strong>Contents: Read-only のみ</strong>にしてください。
-      トークンは localStorage に保存され、GitHub API 以外へは送信されません。
-    </p>
-    <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
-    <button id="saveToken">保存して表示</button>
-  </div>
-
-  <div id="notice" class="notice">読み込み中…</div>
 
   <div id="content" hidden>
-    <div class="card" id="dayCard">
+
+    <!-- ヒーロー: その日の活動を一つの数字で語る -->
+    <section class="hero-section" id="dayCard">
+      <p class="eyebrow">アクティビティ</p>
+      <h1 class="tagline">今日も、動いた。</h1>
       <div class="daynav">
         <button id="prevDay" aria-label="前の日">‹</button>
         <h2 id="dayTitle"></h2>
         <button id="nextDay" aria-label="次の日">›</button>
       </div>
       <div id="tiles"></div>
+      <div class="scrollcue" aria-hidden="true">⌄</div>
+    </section>
+
+    <!-- きょうのバンド: その日のディテール（常時ダーク） -->
+    <section class="chapter band-dark" id="todayBand">
+      <div class="chapter-inner">
+        <h2 class="head">きょうの、からだ。</h2>
+        <p class="lead">活動と回復を、ひと目で。</p>
+        <div class="card"><div id="dayStats"></div></div>
+      </div>
+    </section>
+
+    <div class="filterbar">
+      <div class="filters" role="group" aria-label="期間">
+        <button data-days="7" aria-pressed="true">7日</button>
+        <button data-days="30" aria-pressed="false">30日</button>
+        <button data-days="90" aria-pressed="false">90日</button>
+      </div>
     </div>
 
-    <div class="filters" role="group" aria-label="期間">
-      <button data-days="7" aria-pressed="true">7日</button>
-      <button data-days="30" aria-pressed="false">30日</button>
-      <button data-days="90" aria-pressed="false">90日</button>
-    </div>
+    <!-- 動く -->
+    <section class="chapter alt">
+      <div class="chapter-inner">
+        <h2 class="head">動く。</h2>
+        <p class="lead">歩数、エネルギー、エクササイズ、スタンド。</p>
+        <div class="card">
+          <h3>歩数</h3>
+          <p class="caption">日ごとの合計</p>
+          <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>アクティブエネルギー</h3>
+          <p class="caption">kcal</p>
+          <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>エクササイズ時間</h3>
+          <p class="caption">分</p>
+          <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>スタンド時間</h3>
+          <p class="caption">分</p>
+          <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+        </div>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>歩数</h2>
-      <p class="caption">日ごとの合計</p>
-      <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
-    </div>
+    <!-- 整える（常時ダーク） -->
+    <section class="chapter band-dark" id="calmBand">
+      <div class="chapter-inner">
+        <h2 class="head">整える。</h2>
+        <p class="lead">静かな心拍は、回復の証。</p>
+        <div class="card">
+          <h3>安静時心拍数</h3>
+          <p class="caption">bpm</p>
+          <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>心拍変動 HRV</h3>
+          <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
+          <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+        </div>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>アクティブエネルギー</h2>
-      <p class="caption">kcal</p>
-      <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
-    </div>
+    <!-- 振り返り -->
+    <section class="chapter alt">
+      <div class="chapter-inner">
+        <h2 class="head">数字で、振り返る。</h2>
+        <p class="lead">期間平均と、すべての記録。</p>
+        <div class="card">
+          <h3>期間平均</h3>
+          <p class="caption">記録がある日のみ</p>
+          <dl class="avgs" id="avgs"></dl>
+        </div>
+        <details>
+          <summary>詳細テーブル（全指標）</summary>
+          <div class="table-wrap"><table id="dataTable"></table></div>
+        </details>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>エクササイズ時間</h2>
-      <p class="caption">分</p>
-      <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h2>スタンド時間</h2>
-      <p class="caption">分</p>
-      <div class="chart-wrap"><canvas id="standChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h2>安静時心拍数</h2>
-      <p class="caption">bpm</p>
-      <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h2>心拍変動 HRV</h2>
-      <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
-      <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h2>期間平均</h2>
-      <p class="caption">記録がある日のみ</p>
-      <dl class="avgs" id="avgs"></dl>
-    </div>
-
-    <details>
-      <summary>詳細テーブル（全指標）</summary>
-      <div class="table-wrap"><table id="dataTable"></table></div>
-    </details>
   </div>
 </main>
 
@@ -326,8 +432,10 @@ let selIdx = -1;
 let rangeDays = 7;
 let charts = [];
 
-const cssVar = (name) =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+// 第2引数でスコープ要素を指定すると、その要素に効いている CSS 変数を読む
+// （常時ダークの .band-dark 内のチャートは、ダーク検証済み配色を拾うため必須）
+const cssVar = (name, el = document.documentElement) =>
+  getComputedStyle(el).getPropertyValue(name).trim();
 
 const fmtMin = (m) => {
   m = Math.round(m);
@@ -375,11 +483,31 @@ function visibleRows() {
   return rows.slice(-rangeDays);
 }
 
-// ---------- 一日のアクティビティ（ヒーロー + 指標グリッド） ----------
+// ---------- 一日のアクティビティ（ヒーロー + バンドの指標グリッド） ----------
 
 const stat = (label, value, unit) => `
   <div class="stat"><div class="label">${label}</div>
     <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
+
+// 初回表示だけ数字をカウントアップさせる（reduced-motion と非対応環境では即時表示）
+let heroAnimated = false;
+function setHeroValue(target) {
+  const el = document.getElementById("heroNum");
+  if (heroAnimated || typeof requestAnimationFrame === "undefined"
+      || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.innerHTML = fmtInt(target);
+    return;
+  }
+  heroAnimated = true;
+  const t0 = Date.now(), dur = 900;
+  const tick = () => {
+    const p = Math.min(1, (Date.now() - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.innerHTML = fmtInt(Math.round(target * ease));
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
 
 function renderDay() {
   const r = rows[selIdx];
@@ -388,10 +516,11 @@ function renderDay() {
   document.getElementById("nextDay").disabled = selIdx >= rows.length - 1;
 
   document.getElementById("tiles").innerHTML = `
-    <div class="hero">
-      <div class="hero-label">歩数</div>
-      <div class="hero-value">${r.steps === "" ? "−" : fmtInt(r.steps)}<small> 歩</small></div>
-    </div>
+    <div class="hero-label">歩数</div>
+    <div class="hero-value">${r.steps === "" ? "−" : '<span id="heroNum"></span><small> 歩</small>'}</div>`;
+  if (r.steps !== "") setHeroValue(Number(r.steps));
+
+  document.getElementById("dayStats").innerHTML = `
     <div class="statgrid">
       ${stat("エクササイズ", r.exercise_min, "分")}
       ${stat("アクティブ", r.active_kcal, "kcal")}
@@ -437,7 +566,7 @@ function renderTable() {
 
 // ---------- チャート ----------
 
-function baseOptions() {
+function baseOptions(scope) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -446,13 +575,13 @@ function baseOptions() {
     scales: {
       x: {
         grid: { display: false },
-        border: { color: cssVar("--baseline") },
-        ticks: { color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+        border: { color: cssVar("--baseline", scope) },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 }, maxRotation: 0, autoSkip: true },
       },
       y: {
         beginAtZero: true,
-        grid: { color: cssVar("--grid") }, border: { display: false },
-        ticks: { color: cssVar("--text-3"), font: { size: 10 } },
+        grid: { color: cssVar("--grid", scope) }, border: { display: false },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 } },
       },
     },
   };
@@ -479,6 +608,7 @@ function barChart(canvasId, key, colorVar, tipFmt) {
 function renderCharts() {
   charts.forEach((c) => c.destroy());
   const v = visibleRows();
+  const calm = document.getElementById("calmBand"); // 常時ダークのバンド（心拍系チャートの配色スコープ）
 
   charts = [
     barChart("stepsChart", "steps", "--steps", (y) => `${fmtInt(y)} 歩`),
@@ -488,7 +618,7 @@ function renderCharts() {
   ];
 
   // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
-  let o = baseOptions();
+  let o = baseOptions(calm);
   o.scales.y.beginAtZero = false;
   o.scales.y.suggestedMin = 40;
   o.plugins.tooltip = { callbacks: { label: (c) => ` 安静時心拍: ${c.parsed.y} bpm` } };
@@ -498,7 +628,7 @@ function renderCharts() {
       labels: v.map((r) => fmtDateShort(r.date)),
       datasets: [{
         data: v.map((r) => (r.resting_hr === "" ? null : Number(r.resting_hr))),
-        borderColor: cssVar("--rhr"), backgroundColor: cssVar("--rhr"),
+        borderColor: cssVar("--rhr", calm), backgroundColor: cssVar("--rhr", calm),
         borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
       }],
     },
@@ -515,8 +645,8 @@ function renderCharts() {
     const w = hrvAll.filter((p) => p.t <= t && p.t > t - 7 * dayMs);
     return w.length ? w.reduce((s, p) => s + p.v, 0) / w.length : null;
   };
-  const hrvColor = cssVar("--hrv");
-  o = baseOptions();
+  const hrvColor = cssVar("--hrv", calm);
+  o = baseOptions(calm);
   o.scales.y.beginAtZero = false;
   o.plugins.tooltip = { callbacks: { label: (c) => c.datasetIndex === 0
     ? ` 7日平均: ${c.parsed.y.toFixed(1)} ms`
@@ -556,10 +686,11 @@ function setupReveal() {
       if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
     }
   }, { threshold: 0.05 });
-  document.querySelectorAll("#content > .card, #content > details").forEach((el) => {
-    el.classList.add("reveal");
-    io.observe(el);
-  });
+  document.querySelectorAll("#content .head, #content .lead, #content .card, #content details")
+    .forEach((el) => {
+      el.classList.add("reveal");
+      io.observe(el);
+    });
 }
 
 // ---------- 操作 ----------

@@ -11,6 +11,7 @@
   :root {
     color-scheme: light;
     --page:        #fbfbfd;
+    --page-alt:    #f5f5f7;
     --surface:     #ffffff;
     --text:        #1d1d1f;
     --text-2:      #6e6e73;
@@ -22,6 +23,7 @@
     --seg-active:  #ffffff;
     --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
     --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
+    --glow:        rgba(74,58,167,0.10);
     --grad-a:      #4a3aa7;
     --grad-b:      #2a78d6;
     --grid:        #e8e8ed;
@@ -41,6 +43,7 @@
     :root {
       color-scheme: dark;
       --page:        #000000;
+      --page-alt:    #161617;
       --surface:     #1c1c1e;
       --text:        #f5f5f7;
       --text-2:      #a1a1a6;
@@ -52,6 +55,7 @@
       --seg-active:  #636366;
       --seg-shadow:  none;
       --card-shadow: none;
+      --glow:        rgba(144,133,233,0.16);
       --grad-a:      #9085e9;
       --grad-b:      #3987e5;
       --grid:        #2c2c2e;
@@ -67,6 +71,31 @@
       --bad:         #e66767;
     }
   }
+  /* 常時ダークの「夜」バンド。中のチャートはこのスコープの変数（ダーク検証済み配色）を読む */
+  .band-dark {
+    --page:        #000000;
+    --surface:     #1c1c1e;
+    --text:        #f5f5f7;
+    --text-2:      #a1a1a6;
+    --text-3:      #86868b;
+    --sep:         rgba(255,255,255,0.14);
+    --fill:        rgba(120,120,128,0.24);
+    --seg-active:  #636366;
+    --seg-shadow:  none;
+    --card-shadow: none;
+    --grid:        #2c2c2e;
+    --baseline:    #3a3a3c;
+    --deep:        #3987e5;
+    --core:        #008300;
+    --rem:         #d55181;
+    --bed:         #9085e9;
+    --wake:        #c98500;
+    --awake:       #d95926;
+    --efficiency:  #199e70;
+    background: #000;
+    color: var(--text);
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -91,21 +120,90 @@
   .topbar-inner {
     max-width: 720px; margin-inline: auto;
     display: flex; align-items: center; gap: 20px;
-    padding: 10px 16px;
+    height: 44px; padding: 0 16px;
   }
   .brand { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; }
   .topnav { margin-left: auto; display: flex; gap: 18px; font-size: 0.85rem; }
   .topnav a { color: var(--text-2); text-decoration: none; }
   .topnav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 
-  main { max-width: 720px; margin-inline: auto; padding: 0 16px; }
+  .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
 
-  .pagehead { text-align: center; padding: 28px 0 20px; }
-  .pagehead h1 {
-    margin: 0; font-size: clamp(1.9rem, 8vw, 2.4rem);
-    font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+  /* フルスクリーンヒーロー */
+  .hero-section {
+    position: relative;
+    min-height: max(560px, 92svh);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 48px 16px 72px;
+    overflow: hidden;
   }
-  .pagesub { margin: 6px 0 0; color: var(--text-2); font-size: 0.9rem; }
+  .hero-section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(60% 45% at 50% 38%, var(--glow), transparent 70%);
+  }
+  .hero-section > * { position: relative; }
+  .eyebrow {
+    font-size: 0.8rem; font-weight: 600; color: var(--text-3);
+    letter-spacing: 0.14em; margin: 0 0 12px;
+  }
+  .tagline {
+    font-size: clamp(2.3rem, 11vw, 3.4rem);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
+    margin: 0 0 22px;
+  }
+  .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px; }
+  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 11em; }
+  .daynav button {
+    width: 32px; height: 32px; border: 0; border-radius: 50%;
+    background: var(--fill); color: var(--text);
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
+  }
+  .daynav button:disabled { opacity: 0.3; cursor: default; }
+
+  .hero-label { font-size: 0.8rem; color: var(--text-3); }
+  .hero-value {
+    font-size: clamp(3rem, 16vw, 4.4rem);
+    font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-value small { font-size: 0.42em; font-weight: 700; }
+  .hero-meta {
+    display: flex; align-items: center; justify-content: center;
+    gap: 14px; margin-top: 12px;
+  }
+  .hero-goal { font-size: 0.9rem; font-weight: 600; color: var(--text-2); }
+  .hero-goal.ok { color: var(--good); }
+  .ring { width: 60px; height: 60px; flex: none; }
+  .ring-text { font-size: 16px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+
+  .scrollcue {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: var(--text-3); font-size: 1.5rem; line-height: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .scrollcue { animation: cue 2.2s ease-in-out infinite; }
+    @keyframes cue {
+      0%, 100% { transform: translate(-50%, 0); opacity: 0.9; }
+      50%      { transform: translate(-50%, 8px); opacity: 0.4; }
+    }
+  }
+
+  /* 章（チャンク化）: 大見出しの断定コピー + リード + コンテンツ */
+  .chapter { padding: 64px 16px; }
+  .chapter.alt { background: var(--page-alt); }
+  .band-dark.chapter { border-block: 1px solid rgba(255,255,255,0.08); }
+  .chapter-inner { max-width: 720px; margin-inline: auto; }
+  .head {
+    font-size: clamp(1.9rem, 9vw, 2.7rem);
+    font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
+    margin: 0 0 10px; text-align: center;
+  }
+  .lead {
+    color: var(--text-2); font-size: 1rem; line-height: 1.6;
+    margin: 0 0 28px; text-align: center;
+  }
 
   .card {
     background: var(--surface);
@@ -114,7 +212,7 @@
     margin-bottom: 14px;
     box-shadow: var(--card-shadow);
   }
-  .card h2 {
+  .card h3 {
     font-size: 0.95rem; font-weight: 600; margin: 0 0 2px;
     color: var(--text); letter-spacing: -0.01em;
   }
@@ -122,32 +220,7 @@
   .chart-wrap { position: relative; height: 220px; }
   .chart-wrap.short { height: 170px; }
 
-  /* 一日ビュー: 日送り + ヒーロー + 指標グリッド */
-  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .daynav h2 { flex: 1; text-align: center; margin: 0; font-size: 0.95rem; font-weight: 600; }
-  .daynav button {
-    width: 32px; height: 32px; border: 0; border-radius: 50%;
-    background: var(--fill); color: var(--text);
-    font-size: 1.05rem; line-height: 1; cursor: pointer;
-  }
-  .daynav button:disabled { opacity: 0.3; cursor: default; }
-
-  .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 4px 2px; }
-  .hero-label { font-size: 0.75rem; color: var(--text-3); }
-  .hero-value {
-    font-size: clamp(2.4rem, 11vw, 3.2rem);
-    font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .hero-value small { font-size: 0.45em; font-weight: 700; }
-  .hero-goal { font-size: 0.8rem; font-weight: 600; margin-top: 2px; color: var(--text-2); }
-  .hero-goal.ok { color: var(--good); }
-  .ring { width: 76px; height: 76px; flex: none; }
-  .ring-text { font-size: 15px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
-
-  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px; }
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); }
   .stat { padding: 10px 12px; }
   .stat:not(:nth-child(3n+1)) { border-left: 1px solid var(--sep); }
   .stat:nth-child(n+4) { border-top: 1px solid var(--sep); }
@@ -158,10 +231,18 @@
   }
   .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
 
-  /* iOS 風セグメンテッドコントロール */
+  /* 期間フィルタ: トップバー下に張り付く iOS 風セグメンテッドコントロール */
+  .filterbar {
+    position: sticky; top: 45px; z-index: 9;
+    padding: 8px 16px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
   .filters {
     display: flex; background: var(--fill); border-radius: 10px;
-    padding: 2px; margin: 20px 0 16px;
+    padding: 2px; max-width: 400px; margin-inline: auto;
   }
   .filters button {
     flex: 1; border: 0; background: transparent; color: var(--text);
@@ -210,15 +291,16 @@
   .foot {
     max-width: 720px; margin-inline: auto;
     color: var(--text-3); font-size: 0.75rem; line-height: 1.8;
-    text-align: center; padding: 24px 16px 44px;
+    text-align: center; padding: 32px 16px 48px;
   }
   .foot a { color: var(--text-3); }
 
-  /* スクロールで現れるカード（モーション設定を尊重） */
+  /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
-    .reveal { opacity: 0; transform: translateY(14px);
-              transition: opacity 0.5s ease, transform 0.5s ease; }
+    .reveal { opacity: 0; transform: translateY(18px);
+              transition: opacity 0.6s ease, transform 0.6s ease; }
     .reveal.in { opacity: 1; transform: none; }
+    .lead.reveal { transition-delay: 0.08s; }
   }
 </style>
 </head>
@@ -234,91 +316,122 @@
 </header>
 
 <main>
-  <div class="pagehead">
-    <h1>睡眠</h1>
-    <p class="pagesub">毎晩の記録と、その傾向。</p>
+  <div class="narrow">
+    <div id="auth" class="card auth" hidden>
+      <h3>アクセストークンの設定（初回のみ）</h3>
+      <p>
+        private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+        発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+        Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+        <strong>Contents: Read-only のみ</strong>にしてください。
+        トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+      </p>
+      <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+      <button id="saveToken">保存して表示</button>
+    </div>
+    <div id="notice" class="notice">読み込み中…</div>
   </div>
-
-  <div id="auth" class="card auth" hidden>
-    <h2>アクセストークンの設定（初回のみ）</h2>
-    <p>
-      private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
-      発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
-      Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
-      <strong>Contents: Read-only のみ</strong>にしてください。
-      トークンは localStorage に保存され、GitHub API 以外へは送信されません。
-    </p>
-    <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
-    <button id="saveToken">保存して表示</button>
-  </div>
-
-  <div id="notice" class="notice">読み込み中…</div>
 
   <div id="content" hidden>
-    <div class="card" id="dayCard">
+
+    <!-- ヒーロー: 昨夜の眠りを一つの数字で語る -->
+    <section class="hero-section" id="dayCard">
+      <p class="eyebrow">睡眠</p>
+      <h1 class="tagline">眠りを、味方に。</h1>
       <div class="daynav">
         <button id="prevDay" aria-label="前の日">‹</button>
         <h2 id="dayTitle"></h2>
         <button id="nextDay" aria-label="次の日">›</button>
       </div>
       <div id="tiles"></div>
-      <div id="hypnoBlock">
-        <div class="legend" style="margin-top:14px">
-          <span style="--c:var(--awake)">覚醒</span>
-          <span style="--c:var(--rem)">レム</span>
-          <span style="--c:var(--core)">Core</span>
-          <span style="--c:var(--deep)">深い睡眠</span>
+      <div class="scrollcue" aria-hidden="true">⌄</div>
+    </section>
+
+    <!-- 夜のバンド: その一晩のディテール（常時ダーク） -->
+    <section class="chapter band-dark" id="nightBand">
+      <div class="chapter-inner">
+        <h2 class="head">一晩の、ものがたり。</h2>
+        <p class="lead">睡眠ステージの移り変わりを、一枚の絵に。</p>
+        <div class="card" id="hypnoBlock">
+          <div class="legend">
+            <span style="--c:var(--awake)">覚醒</span>
+            <span style="--c:var(--rem)">レム</span>
+            <span style="--c:var(--core)">Core</span>
+            <span style="--c:var(--deep)">深い睡眠</span>
+          </div>
+          <div class="chart-wrap short"><canvas id="hypnoChart"></canvas></div>
         </div>
-        <div class="chart-wrap short"><canvas id="hypnoChart"></canvas></div>
+        <div class="card"><div id="dayStats"></div></div>
+      </div>
+    </section>
+
+    <div class="filterbar">
+      <div class="filters" role="group" aria-label="期間">
+        <button data-days="7" aria-pressed="true">7日</button>
+        <button data-days="30" aria-pressed="false">30日</button>
+        <button data-days="90" aria-pressed="false">90日</button>
       </div>
     </div>
 
-    <div class="filters" role="group" aria-label="期間">
-      <button data-days="7" aria-pressed="true">7日</button>
-      <button data-days="30" aria-pressed="false">30日</button>
-      <button data-days="90" aria-pressed="false">90日</button>
-    </div>
-
-    <div class="card" id="patternCard">
-      <h2>睡眠パターン</h2>
-      <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
-      <div class="legend">
-        <span style="--c:var(--awake)">覚醒</span>
-        <span style="--c:var(--rem)">レム</span>
-        <span style="--c:var(--core)">Core</span>
-        <span style="--c:var(--deep)">深い睡眠</span>
+    <!-- リズム -->
+    <section class="chapter alt">
+      <div class="chapter-inner">
+        <h2 class="head">リズムは、正直だ。</h2>
+        <p class="lead">入眠と起床のぶれが、次の日をつくる。</p>
+        <div class="card" id="patternCard">
+          <h3>睡眠パターン</h3>
+          <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
+          <div class="legend">
+            <span style="--c:var(--awake)">覚醒</span>
+            <span style="--c:var(--rem)">レム</span>
+            <span style="--c:var(--core)">Core</span>
+            <span style="--c:var(--deep)">深い睡眠</span>
+          </div>
+          <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>入眠・起床時刻</h3>
+          <p class="caption">就寝リズムのぶれを見る</p>
+          <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+        </div>
       </div>
-      <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
-    </div>
+    </section>
 
-    <div class="card">
-      <h2>睡眠時間と内訳</h2>
-      <p class="caption">点線 = 目標 7 時間</p>
-      <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
-    </div>
+    <!-- 量と質 -->
+    <section class="chapter">
+      <div class="chapter-inner">
+        <h2 class="head">積み重ねる、7時間。</h2>
+        <p class="lead">深い眠りとレムのバランスを、毎晩たしかめる。</p>
+        <div class="card">
+          <h3>睡眠時間と内訳</h3>
+          <p class="caption">点線 = 目標 7 時間</p>
+          <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>睡眠効率</h3>
+          <p class="caption">在床時間に占める実睡眠の割合（%）</p>
+          <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+        </div>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>入眠・起床時刻</h2>
-      <p class="caption">就寝リズムのぶれを見る</p>
-      <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
-    </div>
+    <!-- 振り返り -->
+    <section class="chapter alt">
+      <div class="chapter-inner">
+        <h2 class="head">数字で、振り返る。</h2>
+        <p class="lead">期間平均と、すべての記録。</p>
+        <div class="card">
+          <h3>期間平均</h3>
+          <p class="caption">選択中の期間の平均値</p>
+          <dl class="avgs" id="avgs"></dl>
+        </div>
+        <details>
+          <summary>詳細テーブル（全指標）</summary>
+          <div class="table-wrap"><table id="dataTable"></table></div>
+        </details>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>睡眠効率</h2>
-      <p class="caption">在床時間に占める実睡眠の割合（%）</p>
-      <div class="chart-wrap"><canvas id="effChart"></canvas></div>
-    </div>
-
-    <div class="card">
-      <h2>期間平均</h2>
-      <p class="caption">選択中の期間の平均値</p>
-      <dl class="avgs" id="avgs"></dl>
-    </div>
-
-    <details>
-      <summary>詳細テーブル（全指標）</summary>
-      <div class="table-wrap"><table id="dataTable"></table></div>
-    </details>
   </div>
 </main>
 
@@ -347,11 +460,13 @@ let rangeDays = 7;
 let charts = [];
 let hypnoChart = null;
 
-const cssVar = (name) =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const stateColors = () => ({
-  awake: cssVar("--awake"), rem: cssVar("--rem"),
-  core: cssVar("--core"), deep: cssVar("--deep"),
+// 第2引数でスコープ要素を指定すると、その要素に効いている CSS 変数を読む
+// （常時ダークの .band-dark 内のチャートは、ダーク検証済み配色を拾うため必須）
+const cssVar = (name, el = document.documentElement) =>
+  getComputedStyle(el).getPropertyValue(name).trim();
+const stateColors = (el) => ({
+  awake: cssVar("--awake", el), rem: cssVar("--rem", el),
+  core: cssVar("--core", el), deep: cssVar("--deep", el),
 });
 const STATE_LABEL = { awake: "覚醒", rem: "レム", core: "Core", deep: "深い睡眠" };
 
@@ -429,7 +544,27 @@ function visibleRows() {
   return rows.slice(-rangeDays);
 }
 
-// ---------- 一日の睡眠記録（ヒーロー + 指標グリッド + 睡眠図) ----------
+// ---------- 一日の睡眠記録（ヒーロー + 夜バンドの指標グリッド + 睡眠図） ----------
+
+// 初回表示だけ数字をカウントアップさせる（reduced-motion と非対応環境では即時表示）
+let heroAnimated = false;
+function setHeroValue(target) {
+  const el = document.getElementById("heroNum");
+  if (heroAnimated || typeof requestAnimationFrame === "undefined"
+      || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.innerHTML = fmtMinHero(target);
+    return;
+  }
+  heroAnimated = true;
+  const t0 = Date.now(), dur = 900;
+  const tick = () => {
+    const p = Math.min(1, (Date.now() - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.innerHTML = fmtMinHero(target * ease);
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
 
 function renderDay() {
   const r = rows[selIdx];
@@ -443,12 +578,9 @@ function renderDay() {
   const ringPct = Math.min(100, pct);
   const C = 2 * Math.PI * 34; // リング周長
   document.getElementById("tiles").innerHTML = `
-    <div class="hero">
-      <div class="hero-main">
-        <div class="hero-label">実睡眠</div>
-        <div class="hero-value">${fmtMinHero(sleep)}</div>
-        <div class="hero-goal ${ok ? "ok" : ""}">${ok ? "目標達成" : `目標まで ${fmtMin(TARGET_MIN - sleep)}`}</div>
-      </div>
+    <div class="hero-label">実睡眠</div>
+    <div class="hero-value" id="heroNum"></div>
+    <div class="hero-meta">
       <svg class="ring" viewBox="0 0 76 76" role="img" aria-label="7時間目標の達成率 ${pct}%">
         <defs>
           <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
@@ -462,7 +594,11 @@ function renderDay() {
           stroke-dashoffset="${(C * (1 - ringPct / 100)).toFixed(2)}" transform="rotate(-90 38 38)"/>
         <text x="38" y="43" text-anchor="middle" class="ring-text">${pct}%</text>
       </svg>
-    </div>
+      <div class="hero-goal ${ok ? "ok" : ""}">${ok ? "目標達成" : `目標まで ${fmtMin(TARGET_MIN - sleep)}`}</div>
+    </div>`;
+  setHeroValue(sleep);
+
+  document.getElementById("dayStats").innerHTML = `
     <div class="statgrid">
       <div class="stat"><div class="label">入眠 → 起床</div>
         <div class="value">${r.sleep_onset}<small> → </small>${r.wake_time}</div></div>
@@ -481,7 +617,7 @@ function renderDay() {
   renderHypno(r.date);
 }
 
-// 睡眠図: 横軸 = 時刻、縦軸 = ステータス。サンプル区間を浮動バーで描く
+// 睡眠図: 横軸 = 時刻、縦軸 = ステータス。常時ダークの夜バンド内に描くため配色はバンドスコープで読む
 function renderHypno(dateStr) {
   if (hypnoChart) { hypnoChart.destroy(); hypnoChart = null; }
   const block = document.getElementById("hypnoBlock");
@@ -489,7 +625,8 @@ function renderHypno(dateStr) {
   if (!segs || !segs.length) { block.hidden = true; return; }
   block.hidden = false;
 
-  const colors = stateColors();
+  const band = document.getElementById("nightBand");
+  const colors = stateColors(band);
   const yOrder = ["覚醒", "レム", "Core", "深い睡眠"];
   const data = segs.map((g) => ({ x: [g.s, g.e], y: STATE_LABEL[g.state], state: g.state }));
   const xMin = Math.floor(Math.min(...segs.map((g) => g.s)) / 30) * 30;
@@ -499,7 +636,7 @@ function renderHypno(dateStr) {
     type: "bar",
     data: { labels: yOrder, datasets: [{
       data,
-      backgroundColor: (ctx) => colors[ctx.raw?.state] || cssVar("--text-3"),
+      backgroundColor: (ctx) => colors[ctx.raw?.state] || cssVar("--text-3", band),
       barThickness: 14, borderRadius: 4, borderSkipped: false,
     }] },
     options: {
@@ -515,13 +652,13 @@ function renderHypno(dateStr) {
       scales: {
         x: {
           type: "linear", min: xMin, max: xMax,
-          grid: { color: cssVar("--grid") }, border: { color: cssVar("--baseline") },
-          ticks: { color: cssVar("--text-3"), font: { size: 10 },
+          grid: { color: cssVar("--grid", band) }, border: { color: cssVar("--baseline", band) },
+          ticks: { color: cssVar("--text-3", band), font: { size: 10 },
                    stepSize: 60, callback: (v) => unitMinToTime(v) },
         },
         y: {
           grid: { display: false }, border: { display: false },
-          ticks: { color: cssVar("--text-3"), font: { size: 10 } },
+          ticks: { color: cssVar("--text-3", band), font: { size: 10 } },
         },
       },
     },
@@ -716,10 +853,11 @@ function setupReveal() {
       if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
     }
   }, { threshold: 0.05 });
-  document.querySelectorAll("#content > .card, #content > details").forEach((el) => {
-    el.classList.add("reveal");
-    io.observe(el);
-  });
+  document.querySelectorAll("#content .head, #content .lead, #content .card, #content details")
+    .forEach((el) => {
+      el.classList.add("reveal");
+      io.observe(el);
+    });
 }
 
 // ---------- 操作 ----------
