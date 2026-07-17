@@ -3,200 +3,312 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>アクティビティダッシュボード | LIFE</title>
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>アクティビティ | LIFE</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
   :root {
     color-scheme: light;
-    --page:           #f9f9f7;
-    --surface-1:      #fcfcfb;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --grid:           #e1e0d9;
-    --baseline:       #c3c2b7;
-    --border:         rgba(11,11,11,0.10);
-    --steps:          #2a78d6;  /* categorical slot 1 */
-    --energy:         #eda100;  /* slot 4 */
-    --exercise:       #1baf7a;  /* slot 5 */
-    --stand:          #4a3aa7;  /* slot 7 */
-    --rhr:            #e87ba4;  /* slot 3 */
-    --hrv:            #008300;  /* slot 2 */
-    --good:           #006300;
-    --bad:            #d03b3b;
+    --page:        #fbfbfd;
+    --surface:     #ffffff;
+    --text:        #1d1d1f;
+    --text-2:      #6e6e73;
+    --text-3:      #86868b;
+    --sep:         rgba(0,0,0,0.08);
+    --glass:       rgba(251,251,253,0.72);
+    --fill:        rgba(120,120,128,0.12);
+    --accent:      #0071e3;
+    --seg-active:  #ffffff;
+    --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
+    --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
+    --grad-a:      #2a78d6;
+    --grad-b:      #4a3aa7;
+    --grid:        #e8e8ed;
+    --baseline:    #d2d2d7;
+    /* チャート配色（dataviz 検証済み。変更時は validate_palette.js で再検証すること） */
+    --steps:       #2a78d6;  /* categorical slot 1 */
+    --energy:      #eda100;  /* slot 4 */
+    --exercise:    #1baf7a;  /* slot 5 */
+    --stand:       #4a3aa7;  /* slot 7 */
+    --rhr:         #e87ba4;  /* slot 3 */
+    --hrv:         #008300;  /* slot 2 */
+    --good:        #006300;
+    --bad:         #d03b3b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       color-scheme: dark;
-      --page:           #0d0d0d;
-      --surface-1:      #1a1a19;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --grid:           #2c2c2a;
-      --baseline:       #383835;
-      --border:         rgba(255,255,255,0.10);
-      --steps:          #3987e5;
-      --energy:         #c98500;
-      --exercise:       #199e70;
-      --stand:          #9085e9;
-      --rhr:            #d55181;
-      --hrv:            #0ca30c;
-      --good:           #0ca30c;
-      --bad:            #e66767;
+      --page:        #000000;
+      --surface:     #1c1c1e;
+      --text:        #f5f5f7;
+      --text-2:      #a1a1a6;
+      --text-3:      #86868b;
+      --sep:         rgba(255,255,255,0.14);
+      --glass:       rgba(0,0,0,0.65);
+      --fill:        rgba(120,120,128,0.24);
+      --accent:      #0a84ff;
+      --seg-active:  #636366;
+      --seg-shadow:  none;
+      --card-shadow: none;
+      --grad-a:      #3987e5;
+      --grad-b:      #9085e9;
+      --grid:        #2c2c2e;
+      --baseline:    #3a3a3c;
+      --steps:       #3987e5;
+      --energy:      #c98500;
+      --exercise:    #199e70;
+      --stand:       #9085e9;
+      --rhr:         #d55181;
+      --hrv:         #0ca30c;
+      --good:        #0ca30c;
+      --bad:         #e66767;
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--page);
-    color: var(--text-primary);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 16px;
-    max-width: 720px;
-    margin-inline: auto;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 1.2rem; margin: 0 0 2px; }
-  .sub { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 16px; }
-  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-  .tile {
-    background: var(--page);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
   }
-  .tile .label { color: var(--text-muted); font-size: 0.7rem; }
-  .tile .value { font-size: 1.15rem; font-weight: 700; margin-top: 2px; }
-  .tile .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); }
-  .tile.hero { grid-column: span 3; display: flex; align-items: baseline; gap: 12px; }
-  .tile.hero .value { font-size: 2rem; }
-  .filters { display: flex; gap: 6px; margin: 8px 0 12px; }
-  .filters button {
-    flex: 1;
-    background: var(--surface-1);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 0;
-    font-size: 0.85rem;
-    cursor: pointer;
+
+  /* すりガラスのトップバー */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
   }
-  .filters button[aria-pressed="true"] {
-    color: var(--text-primary);
-    font-weight: 700;
-    border-color: var(--baseline);
+  .topbar-inner {
+    max-width: 720px; margin-inline: auto;
+    display: flex; align-items: center; gap: 20px;
+    padding: 10px 16px;
   }
+  .brand { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; }
+  .topnav { margin-left: auto; display: flex; gap: 18px; font-size: 0.85rem; }
+  .topnav a { color: var(--text-2); text-decoration: none; }
+  .topnav a[aria-current="page"] { color: var(--text); font-weight: 600; }
+
+  main { max-width: 720px; margin-inline: auto; padding: 0 16px; }
+
+  .pagehead { text-align: center; padding: 28px 0 20px; }
+  .pagehead h1 {
+    margin: 0; font-size: clamp(1.9rem, 8vw, 2.4rem);
+    font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
+  }
+  .pagesub { margin: 6px 0 0; color: var(--text-2); font-size: 0.9rem; }
+
   .card {
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 12px;
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--card-shadow);
   }
-  .card h2 { font-size: 0.9rem; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+  .card h2 {
+    font-size: 0.95rem; font-weight: 600; margin: 0 0 2px;
+    color: var(--text); letter-spacing: -0.01em;
+  }
+  .caption { font-size: 0.75rem; color: var(--text-3); margin: 0 0 10px; }
   .chart-wrap { position: relative; height: 170px; }
-  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .daynav h2 { flex: 1; text-align: center; margin: 0; color: var(--text-primary); }
+
+  /* 一日ビュー: 日送り + ヒーロー + 指標グリッド */
+  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .daynav h2 { flex: 1; text-align: center; margin: 0; font-size: 0.95rem; font-weight: 600; }
   .daynav button {
-    background: var(--page); color: var(--text-primary);
-    border: 1px solid var(--border); border-radius: 8px;
-    width: 40px; height: 32px; font-size: 1rem; cursor: pointer;
+    width: 32px; height: 32px; border: 0; border-radius: 50%;
+    background: var(--fill); color: var(--text);
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
   }
   .daynav button:disabled { opacity: 0.3; cursor: default; }
+
+  .hero { padding: 6px 4px 2px; }
+  .hero-label { font-size: 0.75rem; color: var(--text-3); }
+  .hero-value {
+    font-size: clamp(2.4rem, 11vw, 3.2rem);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-value small { font-size: 0.45em; font-weight: 700; }
+
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 14px; }
+  .stat { padding: 10px 12px; }
+  .stat:not(:nth-child(3n+1)) { border-left: 1px solid var(--sep); }
+  .stat:nth-child(n+4) { border-top: 1px solid var(--sep); }
+  .stat .label { font-size: 0.7rem; color: var(--text-3); }
+  .stat .value {
+    font-size: 0.95rem; font-weight: 600; margin-top: 2px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
+
+  /* iOS 風セグメンテッドコントロール */
+  .filters {
+    display: flex; background: var(--fill); border-radius: 10px;
+    padding: 2px; margin: 20px 0 16px;
+  }
+  .filters button {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    font-size: 0.85rem; font-weight: 500; padding: 7px 0;
+    border-radius: 8px; cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] {
+    background: var(--seg-active); box-shadow: var(--seg-shadow); font-weight: 600;
+  }
+
   .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
-  .avgs dt { color: var(--text-muted); font-size: 0.7rem; }
-  .avgs dd { margin: 0 0 4px; font-weight: 700; }
-  details { margin-top: 4px; }
-  summary { color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; padding: 4px 0; }
+  .avgs dt { color: var(--text-3); font-size: 0.7rem; }
+  .avgs dd { margin: 0 0 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  details { margin: 4px 0 8px; }
+  summary { color: var(--accent); font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 6px 0; }
   .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; font-size: 0.75rem; white-space: nowrap; width: 100%; }
-  th, td { padding: 4px 8px; text-align: right; font-variant-numeric: tabular-nums; }
-  th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--baseline); }
-  td { border-bottom: 1px solid var(--grid); }
+  th, td { padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--baseline); }
+  td { border-bottom: 1px solid var(--sep); }
   th:first-child, td:first-child { text-align: left; }
-  .notice { color: var(--text-secondary); padding: 24px 8px; text-align: center; }
-  a { color: var(--steps); }
+
+  .notice { color: var(--text-2); padding: 32px 8px; text-align: center; }
+
+  /* 初回のトークン設定 */
+  .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
+  .auth input {
+    width: 100%; padding: 11px 12px; font-size: 1rem;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text); margin-bottom: 10px;
+  }
+  .auth button {
+    width: 100%; padding: 11px; border: 0; border-radius: 980px;
+    background: var(--accent); color: #fff;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  }
+
+  .foot {
+    max-width: 720px; margin-inline: auto;
+    color: var(--text-3); font-size: 0.75rem; line-height: 1.8;
+    text-align: center; padding: 24px 16px 44px;
+  }
+  .foot a { color: var(--text-3); }
+
+  /* スクロールで現れるカード（モーション設定を尊重） */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(14px);
+              transition: opacity 0.5s ease, transform 0.5s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+  }
 </style>
 </head>
 <body>
-<h1>アクティビティダッシュボード</h1>
-<div class="sub">データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新） / <a href="index.html">睡眠 ›</a> / <a href="#" id="changeToken">トークン変更</a></div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">LIFE</span>
+    <nav class="topnav">
+      <a href="index.html">睡眠</a>
+      <a href="activity.html" aria-current="page">アクティビティ</a>
+    </nav>
+  </div>
+</header>
 
-<div id="auth" class="card" hidden>
-  <h2>アクセストークンの設定（初回のみ）</h2>
-  <p style="font-size:0.85rem; color:var(--text-secondary)">
-    private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
-    発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
-    Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
-    <strong>Contents: Read-only のみ</strong>にしてください。
-    トークンは localStorage に保存され、GitHub API 以外へは送信されません。
-  </p>
-  <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"
-    style="width:100%; padding:8px; border:1px solid var(--border); border-radius:8px;
-           background:var(--page); color:var(--text-primary); margin-bottom:8px;">
-  <button id="saveToken" style="width:100%; padding:10px; border:1px solid var(--baseline);
-    border-radius:8px; background:var(--surface-1); color:var(--text-primary);
-    font-weight:700; cursor:pointer;">保存して表示</button>
-</div>
+<main>
+  <div class="pagehead">
+    <h1>アクティビティ</h1>
+    <p class="pagesub">日々の活動量と、心拍の傾向。</p>
+  </div>
 
-<div id="notice" class="notice">読み込み中…</div>
+  <div id="auth" class="card auth" hidden>
+    <h2>アクセストークンの設定（初回のみ）</h2>
+    <p>
+      private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+      発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+      Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+      <strong>Contents: Read-only のみ</strong>にしてください。
+      トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+    </p>
+    <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+    <button id="saveToken">保存して表示</button>
+  </div>
 
-<div id="content" hidden>
-  <div class="card" id="dayCard">
-    <div class="daynav">
-      <button id="prevDay" aria-label="前の日">‹</button>
-      <h2 id="dayTitle"></h2>
-      <button id="nextDay" aria-label="次の日">›</button>
+  <div id="notice" class="notice">読み込み中…</div>
+
+  <div id="content" hidden>
+    <div class="card" id="dayCard">
+      <div class="daynav">
+        <button id="prevDay" aria-label="前の日">‹</button>
+        <h2 id="dayTitle"></h2>
+        <button id="nextDay" aria-label="次の日">›</button>
+      </div>
+      <div id="tiles"></div>
     </div>
-    <div class="tiles" id="tiles"></div>
-  </div>
 
-  <div class="filters" role="group" aria-label="期間">
-    <button data-days="7" aria-pressed="true">7日</button>
-    <button data-days="30" aria-pressed="false">30日</button>
-    <button data-days="90" aria-pressed="false">90日</button>
-  </div>
+    <div class="filters" role="group" aria-label="期間">
+      <button data-days="7" aria-pressed="true">7日</button>
+      <button data-days="30" aria-pressed="false">30日</button>
+      <button data-days="90" aria-pressed="false">90日</button>
+    </div>
 
-  <div class="card">
-    <h2>歩数</h2>
-    <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>歩数</h2>
+      <p class="caption">日ごとの合計</p>
+      <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>アクティブエネルギー（kcal）</h2>
-    <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>アクティブエネルギー</h2>
+      <p class="caption">kcal</p>
+      <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>エクササイズ時間（分）</h2>
-    <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>エクササイズ時間</h2>
+      <p class="caption">分</p>
+      <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>スタンド時間（分）</h2>
-    <div class="chart-wrap"><canvas id="standChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>スタンド時間</h2>
+      <p class="caption">分</p>
+      <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>安静時心拍数（bpm）</h2>
-    <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>安静時心拍数</h2>
+      <p class="caption">bpm</p>
+      <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>心拍変動 HRV（ms。薄い点 = 日次中央値、線 = 7日移動平均）</h2>
-    <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
-  </div>
+    <div class="card">
+      <h2>心拍変動 HRV</h2>
+      <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
+      <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+    </div>
 
-  <div class="card">
-    <h2>期間平均（記録がある日のみ）</h2>
-    <dl class="avgs" id="avgs"></dl>
-  </div>
+    <div class="card">
+      <h2>期間平均</h2>
+      <p class="caption">記録がある日のみ</p>
+      <dl class="avgs" id="avgs"></dl>
+    </div>
 
-  <details>
-    <summary>詳細テーブル（全指標）</summary>
-    <div class="table-wrap"><table id="dataTable"></table></div>
-  </details>
-</div>
+    <details>
+      <summary>詳細テーブル（全指標）</summary>
+      <div class="table-wrap"><table id="dataTable"></table></div>
+    </details>
+  </div>
+</main>
+
+<footer class="foot">
+  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新）<br>
+  <a href="#" id="changeToken">トークンを変更</a>
+</footer>
 
 <script>
 "use strict";
@@ -205,6 +317,9 @@ const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/hea
 const METRICS_API = API_BASE + "metrics-daily.csv?ref=main";
 const LOG_API = API_BASE + "health-log.csv?ref=main";
 const TOKEN_KEY = "life_dashboard_pat"; // 睡眠ページと共用
+
+Chart.defaults.font.family =
+  '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
 
 let rows = [];         // 日付昇順の統合行 {date, steps, active_kcal, stand_min, resting_hr, hrv_ms, exercise_min}
 let selIdx = -1;
@@ -260,10 +375,10 @@ function visibleRows() {
   return rows.slice(-rangeDays);
 }
 
-// ---------- 一日のアクティビティ（タイル） ----------
+// ---------- 一日のアクティビティ（ヒーロー + 指標グリッド） ----------
 
-const tile = (label, value, unit) => `
-  <div class="tile"><div class="label">${label}</div>
+const stat = (label, value, unit) => `
+  <div class="stat"><div class="label">${label}</div>
     <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
 
 function renderDay() {
@@ -273,17 +388,17 @@ function renderDay() {
   document.getElementById("nextDay").disabled = selIdx >= rows.length - 1;
 
   document.getElementById("tiles").innerHTML = `
-    <div class="tile hero">
-      <div>
-        <div class="label">歩数</div>
-        <div class="value">${r.steps === "" ? "−" : fmtInt(r.steps)}<small> 歩</small></div>
-      </div>
+    <div class="hero">
+      <div class="hero-label">歩数</div>
+      <div class="hero-value">${r.steps === "" ? "−" : fmtInt(r.steps)}<small> 歩</small></div>
     </div>
-    ${tile("エクササイズ", r.exercise_min, "分")}
-    ${tile("アクティブ", r.active_kcal, "kcal")}
-    ${tile("スタンド", r.stand_min, "分")}
-    ${tile("安静時心拍", r.resting_hr, "bpm")}
-    ${tile("心拍変動", r.hrv_ms, "ms")}`;
+    <div class="statgrid">
+      ${stat("エクササイズ", r.exercise_min, "分")}
+      ${stat("アクティブ", r.active_kcal, "kcal")}
+      ${stat("スタンド", r.stand_min, "分")}
+      ${stat("安静時心拍", r.resting_hr, "bpm")}
+      ${stat("心拍変動", r.hrv_ms, "ms")}
+    </div>`;
 }
 
 // ---------- 期間サマリ ----------
@@ -332,12 +447,12 @@ function baseOptions() {
       x: {
         grid: { display: false },
         border: { color: cssVar("--baseline") },
-        ticks: { color: cssVar("--text-muted"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+        ticks: { color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
       },
       y: {
         beginAtZero: true,
         grid: { color: cssVar("--grid") }, border: { display: false },
-        ticks: { color: cssVar("--text-muted"), font: { size: 10 } },
+        ticks: { color: cssVar("--text-3"), font: { size: 10 } },
       },
     },
   };
@@ -430,6 +545,23 @@ function renderAll() {
   renderTable();
 }
 
+// ---------- スクロールリビール ----------
+
+let revealDone = false;
+function setupReveal() {
+  if (revealDone || !("IntersectionObserver" in window)) return;
+  revealDone = true;
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+    }
+  }, { threshold: 0.05 });
+  document.querySelectorAll("#content > .card, #content > details").forEach((el) => {
+    el.classList.add("reveal");
+    io.observe(el);
+  });
+}
+
 // ---------- 操作 ----------
 
 document.getElementById("prevDay").addEventListener("click", () => {
@@ -514,6 +646,7 @@ async function load() {
     noticeEl.hidden = true;
     document.getElementById("content").hidden = false;
     renderAll();
+    setupReveal();
   } catch (e) {
     if (e.auth) {
       localStorage.removeItem(TOKEN_KEY);
