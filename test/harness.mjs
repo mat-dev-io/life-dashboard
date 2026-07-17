@@ -243,6 +243,31 @@ const healthLog = `date,exercise_min
     assert(`${name}: モバイル幅 720px`, html.includes("max-width: 720px"));
     assert(`${name}: フルスクリーンヒーロー`, html.includes("hero-section"));
     assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
+    assert(`${name}: JS 無効時はステージを縦積み表示`, html.includes(".stagegroup:not(.js)"));
+  }
+  // スクロール駆動ステージ: タブ数とパネル数が一致すること
+  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]]]) {
+    const sections = html.split('class="stagegroup"').slice(1);
+    assert(`${name}: ステージグループ数`, sections.length === groups.length,
+      `found=${sections.length}`);
+    groups.forEach((n, i) => {
+      const panels = (sections[i].split('<div class="stagepanels">')[1] ?? "")
+        .split('class="stagepanel"').length - 1;
+      const tabs = (sections[i].match(/aria-selected=/g) || []).length;
+      assert(`${name}: グループ${i + 1} のパネル ${n} 枚`, panels === n, `panels=${panels}`);
+      assert(`${name}: グループ${i + 1} のタブ ${n} 個`,
+        (sections[i].split("<div class=\"stagepanels\">")[0].match(/aria-selected=/g) || []).length === n,
+        `tabs=${tabs}`);
+    });
+  }
+  // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
+  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6]]) {
+    const descs = (html.match(/class="stagedesc"/g) || []).length;
+    const figs = (html.match(/class="stagefig"/g) || []).length;
+    const bodies = (html.match(/class="desc"/g) || []).length;
+    assert(`${name}: 説明カラム ${total} 個`, descs === total, `descs=${descs}`);
+    assert(`${name}: グラフカラム ${total} 個`, figs === total, `figs=${figs}`);
+    assert(`${name}: 説明本文 ${total} 個`, bodies === total, `bodies=${bodies}`);
   }
 }
 

@@ -276,12 +276,67 @@
   }
   .foot a { color: var(--text-3); }
 
+  /* スクロール駆動ステージ: sticky ピンの中でグラフを 1 枚ずつ切り替える */
+  .stagechapter { padding: 64px 0 0; }
+  .stagechapter .chapter-inner { padding: 0 16px; }
+  .stagegroup { position: relative; }
+  .stagegroup.js { height: calc(var(--stages) * 100svh); }
+  .stagegroup.js .stagepin { position: sticky; top: 0; height: 100svh; }
+  .stagepin {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 104px 16px 24px;
+  }
+  .stagetabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 18px; }
+  .stagetabs button {
+    border: 1px solid var(--sep); background: transparent; color: var(--text-2);
+    border-radius: 980px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .stagetabs button[aria-selected="true"] {
+    background: var(--text); border-color: var(--text); color: var(--page);
+  }
+  .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
+  .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
+  .stagepanel { display: flex; flex-direction: column; gap: 10px; }
+  .stagepanel[hidden] { display: none; }
+  .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
+  .stagegroup.js .stagepanel {
+    position: absolute; inset: 0;
+    opacity: 0; visibility: hidden; transform: translateY(28px);
+  }
+  .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
+  .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
+  .stagedesc h3 {
+    text-align: center; font-size: 1.05rem; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
+  }
+  .stagedesc .caption { text-align: center; }
+  .stagedesc .desc {
+    font-size: 0.85rem; color: var(--text-2); line-height: 1.7; margin: 6px 0 0;
+  }
+  .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
+  @media (min-width: 640px) {
+    .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
+    .stagefig { flex: 1 1 58%; align-self: stretch; min-width: 0; }
+    .stagedesc { flex: 1 1 42%; }
+    .stagedesc h3, .stagedesc .caption { text-align: left; }
+    .stagedesc h3 { font-size: 1.35rem; }
+    .stagedesc .desc { font-size: 0.95rem; }
+  }
+
   /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
     .reveal { opacity: 0; transform: translateY(18px);
               transition: opacity 0.6s ease, transform 0.6s ease; }
     .reveal.in { opacity: 1; transform: none; }
     .lead.reveal { transition-delay: 0.08s; }
+    .stagegroup.js .stagepanel {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+    }
+    .stagegroup.js .stagepanel.active {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s;
+    }
   }
 </style>
 </head>
@@ -345,54 +400,106 @@
       </div>
     </div>
 
-    <!-- 動く -->
-    <section class="chapter alt">
+    <!-- 動く: スクロール駆動ステージ -->
+    <section class="chapter alt stagechapter">
       <div class="chapter-inner">
-        <h2 class="head">動く。</h2>
-        <p class="lead">歩数、エネルギー、エクササイズ、スタンド。</p>
-        <div class="card">
-          <h3>歩数</h3>
-          <p class="caption">日ごとの合計</p>
-          <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>アクティブエネルギー</h3>
-          <p class="caption">kcal</p>
-          <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>エクササイズ時間</h3>
-          <p class="caption">分</p>
-          <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>スタンド時間</h3>
-          <p class="caption">分</p>
-          <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+        <h2 class="head">4つの数字。どれも正直。</h2>
+        <p class="lead">スクロールで、次の数字へ。</p>
+      </div>
+      <div class="stagegroup" style="--stages:4">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">歩数</button>
+            <button aria-selected="false">エネルギー</button>
+            <button aria-selected="false">エクササイズ</button>
+            <button aria-selected="false">スタンド</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>歩数</h3>
+                <p class="caption">日ごとの合計</p>
+                <p class="desc">一日の合計歩数。絶対量より先に、ゼロの日をつくらないことから始めます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>アクティブエネルギー</h3>
+                <p class="caption">kcal</p>
+                <p class="desc">安静時を上回って使ったエネルギー。動いた強度が、そのまま反映されます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>エクササイズ時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">早歩き以上の運動として記録された時間。週 5 日の実施が目標です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>スタンド時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">立って動いていた時間。座りっぱなしの日は、ここが正直に凹みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 整える（常時ダーク） -->
-    <section class="chapter band-dark" id="calmBand">
+    <!-- 整える（常時ダーク）: スクロール駆動ステージ -->
+    <section class="chapter band-dark stagechapter" id="calmBand">
       <div class="chapter-inner">
         <h2 class="head">整える。</h2>
         <p class="lead">静かな心拍は、回復の証。</p>
-        <div class="card">
-          <h3>安静時心拍数</h3>
-          <p class="caption">bpm</p>
-          <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>心拍変動 HRV</h3>
-          <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
-          <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+      </div>
+      <div class="stagegroup" style="--stages:2">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">心拍</button>
+            <button aria-selected="false">HRV</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>安静時心拍数</h3>
+                <p class="caption">bpm</p>
+                <p class="desc">安静時の心拍数。ゆっくり下がる傾向は体力向上のサイン、急な上昇は疲労や体調変化の合図です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>心拍変動 HRV</h3>
+                <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
+                <p class="desc">心拍のゆらぎは、自律神経の回復力の指標。単日ではなく、7 日移動平均（線）の傾きで読みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- 振り返り -->
-    <section class="chapter alt">
+    <section class="chapter">
       <div class="chapter-inner">
         <h2 class="head">数字で、振り返る。</h2>
         <p class="lead">期間平均と、すべての記録。</p>
@@ -575,7 +682,7 @@ function baseOptions(scope) {
     scales: {
       x: {
         grid: { display: false },
-        border: { color: cssVar("--baseline", scope) },
+        border: { display: false },
         ticks: { color: cssVar("--text-3", scope), font: { size: 10 }, maxRotation: 0, autoSkip: true },
       },
       y: {
@@ -598,7 +705,7 @@ function barChart(canvasId, key, colorVar, tipFmt) {
       datasets: [{
         data: v.map((r) => (r[key] === "" ? null : Number(r[key]))),
         backgroundColor: cssVar(colorVar),
-        borderRadius: 4, borderSkipped: false, maxBarThickness: 26,
+        borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
       }],
     },
     options: o,
@@ -618,6 +725,7 @@ function renderCharts() {
   ];
 
   // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
+  const rhrColor = cssVar("--rhr", calm);
   let o = baseOptions(calm);
   o.scales.y.beginAtZero = false;
   o.scales.y.suggestedMin = 40;
@@ -628,8 +736,9 @@ function renderCharts() {
       labels: v.map((r) => fmtDateShort(r.date)),
       datasets: [{
         data: v.map((r) => (r.resting_hr === "" ? null : Number(r.resting_hr))),
-        borderColor: cssVar("--rhr", calm), backgroundColor: cssVar("--rhr", calm),
-        borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+        borderColor: rhrColor, backgroundColor: rhrColor + "26", // 線の下に淡い面フィル
+        fill: "start", pointBackgroundColor: rhrColor,
+        borderWidth: 2.5, pointRadius: 3, spanGaps: true, tension: 0.35,
       }],
     },
     options: o,
@@ -657,8 +766,9 @@ function renderCharts() {
       labels: v.map((r) => fmtDateShort(r.date)),
       datasets: [
         { data: v.map((r) => ma7(r.date)),
-          borderColor: hrvColor, backgroundColor: hrvColor,
-          borderWidth: 2, pointRadius: 0, spanGaps: true, tension: 0.2 },
+          borderColor: hrvColor, backgroundColor: hrvColor + "1f", // 線の下に淡い面フィル
+          fill: "start",
+          borderWidth: 2.5, pointRadius: 0, spanGaps: true, tension: 0.3 },
         { data: v.map((r) => (r.hrv_ms === "" ? null : Number(r.hrv_ms))),
           showLine: false, pointRadius: 3,
           borderColor: "transparent", backgroundColor: hrvColor + "66" },
@@ -691,6 +801,47 @@ function setupReveal() {
       el.classList.add("reveal");
       io.observe(el);
     });
+}
+
+// ---------- スクロール駆動ステージ（sticky ピンの中でグラフを切り替える） ----------
+
+let stagesDone = false;
+function setupStages() {
+  if (stagesDone) return;
+  const groups = document.querySelectorAll(".stagegroup");
+  if (!groups.length) return;
+  stagesDone = true;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  groups.forEach((g) => {
+    g.classList.add("js");
+    const panels = [...g.querySelectorAll(".stagepanel")];
+    const tabs = [...g.querySelectorAll(".stagetabs button")];
+    let current = -1;
+    const setStage = (i) => {
+      if (i === current) return;
+      current = i;
+      panels.forEach((p, j) => {
+        p.classList.toggle("active", j === i);
+        p.classList.toggle("passed", j < i);
+      });
+      tabs.forEach((b, j) => b.setAttribute("aria-selected", String(j === i)));
+    };
+    // ピン区間のスクロール進捗をステージ番号に写像する
+    const onScroll = () => {
+      const rect = g.getBoundingClientRect();
+      const span = rect.height - window.innerHeight;
+      const p = span > 0 ? Math.min(1, Math.max(0, -rect.top / span)) : 1;
+      setStage(Math.min(panels.length - 1, Math.floor(p * panels.length)));
+    };
+    tabs.forEach((b, i) => b.addEventListener("click", () => {
+      const span = g.offsetHeight - window.innerHeight;
+      const top = window.scrollY + g.getBoundingClientRect().top;
+      window.scrollTo({ top: top + (span * (i + 0.5)) / panels.length,
+                        behavior: reduce.matches ? "auto" : "smooth" });
+    }));
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  });
 }
 
 // ---------- 操作 ----------
@@ -778,6 +929,7 @@ async function load() {
     document.getElementById("content").hidden = false;
     renderAll();
     setupReveal();
+    setupStages();
   } catch (e) {
     if (e.auth) {
       localStorage.removeItem(TOKEN_KEY);
