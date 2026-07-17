@@ -243,6 +243,22 @@ const healthLog = `date,exercise_min
     assert(`${name}: モバイル幅 720px`, html.includes("max-width: 720px"));
     assert(`${name}: フルスクリーンヒーロー`, html.includes("hero-section"));
     assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
+    assert(`${name}: JS 無効時はステージを縦積み表示`, html.includes(".stagegroup:not(.js)"));
+  }
+  // スクロール駆動ステージ: タブ数とパネル数が一致すること
+  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]]]) {
+    const sections = html.split('class="stagegroup"').slice(1);
+    assert(`${name}: ステージグループ数`, sections.length === groups.length,
+      `found=${sections.length}`);
+    groups.forEach((n, i) => {
+      const panels = (sections[i].split('<div class="stagepanels">')[1] ?? "")
+        .split('class="stagepanel"').length - 1;
+      const tabs = (sections[i].match(/aria-selected=/g) || []).length;
+      assert(`${name}: グループ${i + 1} のパネル ${n} 枚`, panels === n, `panels=${panels}`);
+      assert(`${name}: グループ${i + 1} のタブ ${n} 個`,
+        (sections[i].split("<div class=\"stagepanels\">")[0].match(/aria-selected=/g) || []).length === n,
+        `tabs=${tabs}`);
+    });
   }
 }
 

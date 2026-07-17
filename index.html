@@ -295,12 +295,55 @@
   }
   .foot a { color: var(--text-3); }
 
+  /* スクロール駆動ステージ: sticky ピンの中でグラフを 1 枚ずつ切り替える */
+  .stagechapter { padding: 64px 0 0; }
+  .stagechapter .chapter-inner { padding: 0 16px; }
+  .stagegroup { position: relative; }
+  .stagegroup.js { height: calc(var(--stages) * 100svh); }
+  .stagegroup.js .stagepin { position: sticky; top: 0; height: 100svh; }
+  .stagepin {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 104px 16px 24px;
+  }
+  .stagetabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 18px; }
+  .stagetabs button {
+    border: 1px solid var(--sep); background: transparent; color: var(--text-2);
+    border-radius: 980px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .stagetabs button[aria-selected="true"] {
+    background: var(--text); border-color: var(--text); color: var(--page);
+  }
+  .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
+  .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
+  .stagepanel { display: flex; flex-direction: column; }
+  .stagepanel[hidden] { display: none; }
+  .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
+  .stagegroup.js .stagepanel {
+    position: absolute; inset: 0;
+    opacity: 0; visibility: hidden; transform: translateY(28px);
+  }
+  .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
+  .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
+  .stagepanel h3 {
+    text-align: center; font-size: 1.05rem; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
+  }
+  .stagepanel .caption { text-align: center; }
+  .stagepanel .legend { justify-content: center; }
+  .stagepanel .chart-wrap { flex: 1 1 auto; height: auto; min-height: 220px; }
+
   /* スクロールで現れる要素（モーション設定を尊重） */
   @media (prefers-reduced-motion: no-preference) {
     .reveal { opacity: 0; transform: translateY(18px);
               transition: opacity 0.6s ease, transform 0.6s ease; }
     .reveal.in { opacity: 1; transform: none; }
     .lead.reveal { transition-delay: 0.08s; }
+    .stagegroup.js .stagepanel {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+    }
+    .stagegroup.js .stagepanel.active {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s;
+    }
   }
 </style>
 </head>
@@ -373,50 +416,54 @@
       </div>
     </div>
 
-    <!-- リズム -->
-    <section class="chapter alt">
+    <!-- スクロール駆動ステージ: 4 つのグラフを 1 枚ずつ見せる -->
+    <section class="chapter alt stagechapter">
       <div class="chapter-inner">
-        <h2 class="head">リズムは、正直だ。</h2>
-        <p class="lead">入眠と起床のぶれが、次の日をつくる。</p>
-        <div class="card" id="patternCard">
-          <h3>睡眠パターン</h3>
-          <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
-          <div class="legend">
-            <span style="--c:var(--awake)">覚醒</span>
-            <span style="--c:var(--rem)">レム</span>
-            <span style="--c:var(--core)">Core</span>
-            <span style="--c:var(--deep)">深い睡眠</span>
-          </div>
-          <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>入眠・起床時刻</h3>
-          <p class="caption">就寝リズムのぶれを見る</p>
-          <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
-        </div>
+        <h2 class="head">4つの視点。ひとつの眠り。</h2>
+        <p class="lead">スクロールで、視点を切り替える。</p>
       </div>
-    </section>
-
-    <!-- 量と質 -->
-    <section class="chapter">
-      <div class="chapter-inner">
-        <h2 class="head">積み重ねる、7時間。</h2>
-        <p class="lead">深い眠りとレムのバランスを、毎晩たしかめる。</p>
-        <div class="card">
-          <h3>睡眠時間と内訳</h3>
-          <p class="caption">点線 = 目標 7 時間</p>
-          <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
-        </div>
-        <div class="card">
-          <h3>睡眠効率</h3>
-          <p class="caption">在床時間に占める実睡眠の割合（%）</p>
-          <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+      <div class="stagegroup" style="--stages:4">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">パターン</button>
+            <button aria-selected="false">内訳</button>
+            <button aria-selected="false">時刻</button>
+            <button aria-selected="false">効率</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel" id="patternCard">
+              <h3>睡眠パターン</h3>
+              <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
+              <div class="legend">
+                <span style="--c:var(--awake)">覚醒</span>
+                <span style="--c:var(--rem)">レム</span>
+                <span style="--c:var(--core)">Core</span>
+                <span style="--c:var(--deep)">深い睡眠</span>
+              </div>
+              <div class="chart-wrap"><canvas id="patternChart"></canvas></div>
+            </div>
+            <div class="stagepanel">
+              <h3>睡眠時間と内訳</h3>
+              <p class="caption">点線 = 目標 7 時間</p>
+              <div class="chart-wrap"><canvas id="stackChart"></canvas></div>
+            </div>
+            <div class="stagepanel">
+              <h3>入眠・起床時刻</h3>
+              <p class="caption">就寝リズムのぶれを見る</p>
+              <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+            </div>
+            <div class="stagepanel">
+              <h3>睡眠効率</h3>
+              <p class="caption">在床時間に占める実睡眠の割合（%）</p>
+              <div class="chart-wrap"><canvas id="effChart"></canvas></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- 振り返り -->
-    <section class="chapter alt">
+    <section class="chapter">
       <div class="chapter-inner">
         <h2 class="head">数字で、振り返る。</h2>
         <p class="lead">期間平均と、すべての記録。</p>
@@ -713,7 +760,7 @@ function baseOptions() {
     scales: {
       x: {
         grid: { display: false },
-        border: { color: cssVar("--baseline") },
+        border: { display: false },
         ticks: { color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0, autoSkip: true },
       },
     },
@@ -725,16 +772,16 @@ function renderCharts() {
   charts = [];
   const v = visibleRows();
   const labels = v.map((r) => fmtDateShort(r.date));
-  const surface = cssVar("--surface");
+  const stageBg = cssVar("--page-alt"); // ステージ章の背景。積み上げ間ギャップを背景に溶かす
   const grid = cssVar("--grid");
   const colors = stateColors();
 
   // 1. 睡眠時間の内訳（積み上げ棒 + 目標線）
   const stackDs = (label, key, color, topRadius) => ({
     label, data: v.map((r) => Number(r[key]) || 0), backgroundColor: color,
-    borderColor: surface, borderWidth: 1, // 積み上げセグメント間の面ギャップ
-    borderRadius: topRadius ? 4 : 0, borderSkipped: false,
-    stack: "sleep", maxBarThickness: 26,
+    borderColor: stageBg, borderWidth: 1, // 積み上げセグメント間の面ギャップ
+    borderRadius: topRadius ? 6 : 0, borderSkipped: false,
+    stack: "sleep", maxBarThickness: 22,
   });
   let o = baseOptions();
   o.scales.x.stacked = true;
@@ -796,7 +843,8 @@ function renderCharts() {
   // 3. 入眠・起床時刻（18:00 起点に写像した時刻軸）
   const timeDs = (label, key, color) => ({
     label, data: v.map((r) => timeToY(r[key])), borderColor: color,
-    backgroundColor: color, borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+    backgroundColor: color, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: color,
+    spanGaps: true, tension: 0.35,
   });
   o = baseOptions();
   o.scales.y = {
@@ -823,13 +871,15 @@ function renderCharts() {
     ticks: { color: cssVar("--text-3"), font: { size: 10 } },
   };
   o.plugins.tooltip = { callbacks: { label: (c) => ` 睡眠効率: ${c.parsed.y}%` } };
+  const effColor = cssVar("--efficiency");
   charts.push(new Chart(document.getElementById("effChart"), {
     type: "line",
     data: { labels, datasets: [{
       label: "睡眠効率",
       data: v.map((r) => Number(r.efficiency_pct) || null),
-      borderColor: cssVar("--efficiency"), backgroundColor: cssVar("--efficiency"),
-      borderWidth: 2, pointRadius: 4, spanGaps: true, tension: 0.2,
+      borderColor: effColor, backgroundColor: effColor + "26", // 線の下に淡い面フィル
+      fill: "start", pointBackgroundColor: effColor,
+      borderWidth: 2.5, pointRadius: 3, spanGaps: true, tension: 0.35,
     }] },
     options: o,
   }));
@@ -858,6 +908,47 @@ function setupReveal() {
       el.classList.add("reveal");
       io.observe(el);
     });
+}
+
+// ---------- スクロール駆動ステージ（sticky ピンの中でグラフを切り替える） ----------
+
+let stagesDone = false;
+function setupStages() {
+  if (stagesDone) return;
+  const groups = document.querySelectorAll(".stagegroup");
+  if (!groups.length) return;
+  stagesDone = true;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  groups.forEach((g) => {
+    g.classList.add("js");
+    const panels = [...g.querySelectorAll(".stagepanel")];
+    const tabs = [...g.querySelectorAll(".stagetabs button")];
+    let current = -1;
+    const setStage = (i) => {
+      if (i === current) return;
+      current = i;
+      panels.forEach((p, j) => {
+        p.classList.toggle("active", j === i);
+        p.classList.toggle("passed", j < i);
+      });
+      tabs.forEach((b, j) => b.setAttribute("aria-selected", String(j === i)));
+    };
+    // ピン区間のスクロール進捗をステージ番号に写像する
+    const onScroll = () => {
+      const rect = g.getBoundingClientRect();
+      const span = rect.height - window.innerHeight;
+      const p = span > 0 ? Math.min(1, Math.max(0, -rect.top / span)) : 1;
+      setStage(Math.min(panels.length - 1, Math.floor(p * panels.length)));
+    };
+    tabs.forEach((b, i) => b.addEventListener("click", () => {
+      const span = g.offsetHeight - window.innerHeight;
+      const top = window.scrollY + g.getBoundingClientRect().top;
+      window.scrollTo({ top: top + (span * (i + 0.5)) / panels.length,
+                        behavior: reduce.matches ? "auto" : "smooth" });
+    }));
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  });
 }
 
 // ---------- 操作 ----------
@@ -948,6 +1039,7 @@ async function load() {
     document.getElementById("content").hidden = false;
     renderAll();
     setupReveal();
+    setupStages();
   } catch (e) {
     if (e.auth) {
       localStorage.removeItem(TOKEN_KEY);
