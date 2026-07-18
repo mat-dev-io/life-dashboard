@@ -3,6 +3,7 @@
 // <script> を vm で実行して、CSV 統合・欠測 null 化・移動平均・描画文字列を検証する。
 // 実行: node test/harness.mjs
 import { readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
 import vm from "node:vm";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,17 +85,19 @@ async function runPage(file, fixtures) {
       for (const [key, csv] of Object.entries(fixtures)) {
         if (url.includes(key)) return { ok: true, status: 200, text: async () => csv };
       }
-      return { ok: true, status: 404, text: async () => "" };
+      return { ok: false, status: 404, text: async () => "" };
     },
     Chart: ChartStub,
     IntersectionObserver: class { observe() {} unobserve() {} },
+    crypto: webcrypto,
+    TextEncoder, TextDecoder, atob, btoa,
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(extractScript(html), sandbox, { filename: file });
   await new Promise((r) => setTimeout(r, 20)); // load() の完了を待つ
   const chartByCanvas = (id) => ChartStub.created.filter((c) => c.el.id === id).at(-1);
-  return { els, filterButtons, ChartStub, chartByCanvas, html };
+  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox };
 }
 
 // ---------- 睡眠ページ ----------
@@ -114,7 +117,7 @@ const sleepSamples = `date,time,state,duration_sec
 2026-07-11,23:45:00,inbed,600`;
 
 {
-  const { els, filterButtons, ChartStub, chartByCanvas } = await runPage("index.html", {
+  const { els, filterButtons, ChartStub, chartByCanvas, sandbox } = await runPage("index.html", {
     "sleep-daily.csv": sleepDaily,
     "sleep-samples.csv": sleepSamples,
   });
@@ -175,6 +178,16 @@ const sleepSamples = `date,time,state,duration_sec
   assert("sleep: フィルタ切替で再描画", ChartStub.created.length > before);
   assert("sleep: aria-pressed 更新", filterButtons[1].attrs["aria-pressed"] === "true"
     && filterButtons[0].attrs["aria-pressed"] === "false");
+
+  // 共有パスワード: 暗号化 → 復号の往復と、誤パスワードの拒否（GCM 認証エラー）
+  const pat = "github_pat_ROUNDTRIP_TEST";
+  const blob = await sandbox.encryptToken(pat, "correct-horse-battery-staple");
+  assert("shared: ブロブに平文が含まれない", !JSON.stringify(blob).includes(pat));
+  assert("shared: KDF は PBKDF2 60 万回", blob.kdf === "PBKDF2-SHA256" && blob.iterations === 600000);
+  assert("shared: 復号往復", await sandbox.decryptToken(blob, "correct-horse-battery-staple") === pat);
+  let rejected = false;
+  try { await sandbox.decryptToken(blob, "wrong-password-here"); } catch { rejected = true; }
+  assert("shared: 誤パスワードは復号失敗", rejected);
 }
 
 // ---------- アクティビティページ ----------
@@ -237,6 +250,9 @@ const healthLog = `date,exercise_min
   const act = readFileSync(join(root, "activity.html"), "utf8");
   for (const [name, html] of [["index", idx], ["activity", act]]) {
     assert(`${name}: PAT の localStorage キー共用`, html.includes('"life_dashboard_pat"'));
+    assert(`${name}: 共有パスワード UI`, html.includes('id="pwInput"') && html.includes('id="pwSubmit"'));
+    assert(`${name}: 共有トークン生成ツール`, html.includes('id="mkShared"') && html.includes('id="mkOut"'));
+    assert(`${name}: shared-token.json を参照`, html.includes("assets/shared-token.json"));
     assert(`${name}: ダークモード追従`, html.includes("prefers-color-scheme: dark"));
     assert(`${name}: モーション設定の尊重`, html.includes("prefers-reduced-motion"));
     assert(`${name}: ビルド無し（CDN Chart.js）`, html.includes("cdn.jsdelivr.net/npm/chart.js"));

@@ -296,7 +296,7 @@
 
   .notice { color: var(--text-2); padding: 32px 8px; text-align: center; }
 
-  /* 初回のトークン設定 */
+  /* 初回のアクセス設定（共有パスワード / PAT） */
   .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
   .auth input {
     width: 100%; padding: 11px 12px; font-size: 1rem;
@@ -308,6 +308,15 @@
     background: var(--accent); color: #fff;
     font-size: 0.95rem; font-weight: 600; cursor: pointer;
   }
+  .auth .err { color: var(--bad); font-size: 0.85rem; }
+  .auth details { margin-top: 8px; }
+  .auth textarea {
+    width: 100%; padding: 8px; margin-top: 10px;
+    font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text);
+  }
+  .ownertool { border-top: 1px solid var(--sep); margin-top: 16px; padding-top: 12px; }
 
   .foot {
     max-width: 720px; margin-inline: auto;
@@ -395,16 +404,40 @@
 <main>
   <div class="narrow">
     <div id="auth" class="card auth" hidden>
-      <h3>アクセストークンの設定（初回のみ）</h3>
-      <p>
-        private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
-        発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
-        Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
-        <strong>Contents: Read-only のみ</strong>にしてください。
-        トークンは localStorage に保存され、GitHub API 以外へは送信されません。
-      </p>
-      <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
-      <button id="saveToken">保存して表示</button>
+      <h3>アクセス設定（初回のみ）</h3>
+      <div id="pwBlock" hidden>
+        <p>
+          共有パスワードを入力すると閲覧できます。
+          パスワードはこの端末での復号にだけ使われ、どこにも送信されません。
+        </p>
+        <input id="pwInput" type="password" placeholder="共有パスワード" autocomplete="current-password">
+        <button id="pwSubmit">表示する</button>
+        <p id="pwError" class="err" hidden>パスワードが違います。</p>
+      </div>
+      <details id="patBlock">
+        <summary>PAT で設定する（所有者向け）</summary>
+        <p>
+          private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+          発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+          Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+          <strong>Contents: Read-only のみ</strong>にしてください。
+          トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+        </p>
+        <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+        <button id="saveToken">保存して表示</button>
+        <div class="ownertool">
+          <p>
+            <strong>共有用トークンの作成</strong>:
+            共有専用に発行した読み取り PAT をパスワードで暗号化します（空欄ならこの端末の PAT を使用）。
+            出力された JSON を <code>assets/shared-token.json</code> としてコミットすると、
+            パスワードを知っている人が閲覧できるようになります。
+          </p>
+          <input id="mkPat" type="password" placeholder="共有専用 PAT（空欄 = この端末の PAT）" autocomplete="off">
+          <input id="mkPw" type="password" placeholder="共有パスワード（12 文字以上）" autocomplete="new-password">
+          <button id="mkShared">暗号化 JSON を生成</button>
+          <textarea id="mkOut" readonly rows="4" placeholder="ここに JSON が出力されます"></textarea>
+        </div>
+      </details>
     </div>
     <div id="notice" class="notice">読み込み中…</div>
   </div>
@@ -1042,6 +1075,46 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (rows.length) { renderCharts(); renderDay(); }
 });
 
+// ---------- 共有パスワード（暗号化 PAT） ----------
+// 共有専用の読み取り PAT をパスワード由来鍵（PBKDF2-SHA256）+ AES-GCM で暗号化した
+// JSON を assets/shared-token.json に置く。公開ブロブのためパスワードは長いパスフレーズ必須。
+
+const SHARED_URL = "assets/shared-token.json";
+let sharedBlob = null;
+
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function deriveKey(password, salt, iterations) {
+  const km = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" }, km,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function encryptToken(pat, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iterations = 600000;
+  const key = await deriveKey(password, salt, iterations);
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, new TextEncoder().encode(pat));
+  return { v: 1, kdf: "PBKDF2-SHA256", iterations, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+
+async function decryptToken(blob, password) {
+  const key = await deriveKey(password, unb64(blob.salt), blob.iterations);
+  const pt = await crypto.subtle.decrypt(  // GCM が改ざん/誤パスワードを検知して throw する
+    { name: "AES-GCM", iv: unb64(blob.iv) }, key, unb64(blob.ct));
+  return new TextDecoder().decode(pt);
+}
+
+const sharedFetch = fetch(SHARED_URL, { cache: "no-cache" })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j) => { sharedBlob = j; })
+  .catch(() => {});
+
 // ---------- データ取得 ----------
 
 const noticeEl = document.getElementById("notice");
@@ -1052,6 +1125,10 @@ function showAuth(message) {
   noticeEl.hidden = !message;
   authEl.hidden = false;
   document.getElementById("content").hidden = true;
+  sharedFetch.then(() => {
+    document.getElementById("pwBlock").hidden = !sharedBlob;
+    if (!sharedBlob) document.getElementById("patBlock").open = true;
+  });
 }
 
 async function fetchCsv(url, token) {
@@ -1112,9 +1189,34 @@ document.getElementById("saveToken").addEventListener("click", () => {
   load();
 });
 
+document.getElementById("pwSubmit").addEventListener("click", async () => {
+  const pw = document.getElementById("pwInput").value;
+  const err = document.getElementById("pwError");
+  if (!pw || !sharedBlob) return;
+  err.hidden = true;
+  try {
+    const pat = await decryptToken(sharedBlob, pw);
+    localStorage.setItem(TOKEN_KEY, pat);
+    document.getElementById("pwInput").value = "";
+    load();
+  } catch {
+    err.hidden = false;
+  }
+});
+
+// 所有者向け: 共有用の暗号化 JSON を生成（PAT はブラウザ外に出ない）
+document.getElementById("mkShared").addEventListener("click", async () => {
+  const out = document.getElementById("mkOut");
+  const pat = document.getElementById("mkPat").value.trim() || localStorage.getItem(TOKEN_KEY);
+  const pw = document.getElementById("mkPw").value;
+  if (!pat) { out.value = "先に PAT を入力するか、この端末で PAT を設定してください。"; return; }
+  if (pw.length < 12) { out.value = "パスワードは 12 文字以上にしてください（ランダムな単語 4 つ以上を推奨）。"; return; }
+  out.value = JSON.stringify(await encryptToken(pat, pw));
+});
+
 document.getElementById("changeToken").addEventListener("click", (e) => {
   e.preventDefault();
-  showAuth("新しいトークンを入力してください。");
+  showAuth("新しいトークンまたは共有パスワードを入力してください。");
 });
 
 load();
