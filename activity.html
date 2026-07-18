@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LIFE">
+<meta property="og:title" content="LIFE — アクティビティダッシュボード">
+<meta property="og:description" content="日々の活動量と、心拍の傾向。">
+<meta property="og:url" content="https://mat-dev-io.github.io/life-dashboard/activity.html">
+<meta property="og:image" content="https://mat-dev-io.github.io/life-dashboard/assets/og/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <title>アクティビティ | LIFE</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
@@ -23,7 +33,6 @@
     --seg-active:  #ffffff;
     --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
     --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
-    --glow:        rgba(42,120,214,0.10);
     --grad-a:      #2a78d6;
     --grad-b:      #4a3aa7;
     --grid:        #e8e8ed;
@@ -54,7 +63,6 @@
       --seg-active:  #636366;
       --seg-shadow:  none;
       --card-shadow: none;
-      --glow:        rgba(57,135,229,0.16);
       --grad-a:      #3987e5;
       --grad-b:      #9085e9;
       --grid:        #2c2c2e;
@@ -126,17 +134,27 @@
 
   .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
 
-  /* フルスクリーンヒーロー */
+  /* フルスクリーンヒーロー: 背景画像に合わせて常時ダーク（配下の変数をダーク用に上書き） */
   .hero-section {
+    --text: #f5f5f7;
+    --text-2: rgba(255,255,255,0.78);
+    --text-3: rgba(255,255,255,0.6);
+    --fill: rgba(255,255,255,0.16);
+    --grad-a: #3987e5;
+    --grad-b: #9085e9;
     position: relative;
     min-height: max(560px, 92svh);
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     text-align: center; padding: 48px 16px 72px;
     overflow: hidden;
+    background: #0e1226 url("assets/hero/activity-hero.webp") center / cover no-repeat;
+    color: var(--text);
   }
+  /* 可読性のための減光 + 下端をページ背景へ溶かす */
   .hero-section::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(60% 45% at 50% 38%, var(--glow), transparent 70%);
+    background: linear-gradient(to bottom,
+      rgba(6,8,20,0.30), rgba(6,8,20,0.10) 40%, rgba(6,8,20,0.35) 78%, var(--page) 100%);
   }
   .hero-section > * { position: relative; }
   .eyebrow {

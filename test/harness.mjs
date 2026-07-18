@@ -260,6 +260,33 @@ const healthLog = `date,exercise_min
         `tabs=${tabs}`);
     });
   }
+  // デザイン素材: ページが参照するファイルの実在とサイズ上限（肥大の回帰防止）
+  const { statSync } = await import("node:fs");
+  const assetMax = {
+    "assets/hero/sleep-hero.webp": 250_000,
+    "assets/hero/activity-hero.webp": 250_000,
+    "assets/icon/apple-touch-icon.png": 100_000,
+    "assets/icon/icon-192.png": 100_000,
+    "assets/icon/icon-512.png": 300_000,
+    "assets/icon/favicon-32.png": 20_000,
+    "assets/og/og-image.jpg": 300_000,
+  };
+  for (const [p, max] of Object.entries(assetMax)) {
+    let size = -1;
+    try { size = statSync(join(root, p)).size; } catch {}
+    assert(`asset: ${p} が存在しサイズ上限内`, size > 0 && size <= max, `size=${size}`);
+  }
+  const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
+  assert("asset: manifest のアイコン 2 種", manifest.icons?.length === 2);
+  for (const [name, html] of [["index", idx], ["activity", act]]) {
+    assert(`${name}: favicon リンク`, html.includes("assets/icon/favicon-32.png"));
+    assert(`${name}: apple-touch-icon`, html.includes("assets/icon/apple-touch-icon.png"));
+    assert(`${name}: manifest リンク`, html.includes('rel="manifest"'));
+    assert(`${name}: OG 画像メタ`, html.includes("assets/og/og-image.jpg"));
+  }
+  assert("index: ヒーロー背景画像", idx.includes("assets/hero/sleep-hero.webp"));
+  assert("activity: ヒーロー背景画像", act.includes("assets/hero/activity-hero.webp"));
+
   // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
   for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6]]) {
     const descs = (html.match(/class="stagedesc"/g) || []).length;
