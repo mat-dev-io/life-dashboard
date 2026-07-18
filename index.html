@@ -414,7 +414,7 @@
         <button id="pwSubmit">表示する</button>
         <p id="pwError" class="err" hidden>パスワードが違います。</p>
       </div>
-      <details id="patBlock">
+      <details id="patBlock" hidden>
         <summary>PAT で設定する（所有者向け）</summary>
         <p>
           private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
@@ -1080,6 +1080,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
 // JSON を assets/shared-token.json に置く。公開ブロブのためパスワードは長いパスフレーズ必須。
 
 const SHARED_URL = "assets/shared-token.json";
+// ?owner=1 のときだけ PAT 設定・共有トークン作成 UI を出す（表示整理であって秘匿ではない）
+const IS_OWNER = new URLSearchParams(location.search).get("owner") === "1";
 let sharedBlob = null;
 
 const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -1127,7 +1129,9 @@ function showAuth(message) {
   document.getElementById("content").hidden = true;
   sharedFetch.then(() => {
     document.getElementById("pwBlock").hidden = !sharedBlob;
-    if (!sharedBlob) document.getElementById("patBlock").open = true;
+    const patBlock = document.getElementById("patBlock");
+    patBlock.hidden = !!sharedBlob && !IS_OWNER; // 共有設定済みなら所有者のみ表示
+    if (!sharedBlob) patBlock.open = true;
   });
 }
 

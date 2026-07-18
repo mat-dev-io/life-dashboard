@@ -48,7 +48,7 @@ function collectIds(html) {
   return new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
 }
 
-async function runPage(file, fixtures) {
+async function runPage(file, fixtures, opts = {}) {
   const html = readFileSync(join(root, file), "utf8");
   const ids = collectIds(html);
   const els = new Map();
@@ -78,12 +78,18 @@ async function runPage(file, fixtures) {
   const sandbox = {
     document,
     console,
-    localStorage: { getItem: () => "dummy-token", setItem() {}, removeItem() {} },
+    localStorage: {
+      getItem: () => (opts.token === undefined ? "dummy-token" : opts.token),
+      setItem() {}, removeItem() {},
+    },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => "#336699" }),
     fetch: async (url) => {
-      for (const [key, csv] of Object.entries(fixtures)) {
-        if (url.includes(key)) return { ok: true, status: 200, text: async () => csv };
+      for (const [key, body] of Object.entries(fixtures)) {
+        if (url.includes(key)) {
+          return { ok: true, status: 200,
+                   text: async () => body, json: async () => JSON.parse(body) };
+        }
       }
       return { ok: false, status: 404, text: async () => "" };
     },
@@ -91,6 +97,8 @@ async function runPage(file, fixtures) {
     IntersectionObserver: class { observe() {} unobserve() {} },
     crypto: webcrypto,
     TextEncoder, TextDecoder, atob, btoa,
+    URLSearchParams,
+    location: { search: opts.search ?? "" },
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
@@ -243,6 +251,32 @@ const healthLog = `date,exercise_min
     ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
 }
 
+// ---------- 認証画面の表示分岐（共有ブロブ × owner パラメータ） ----------
+
+const dummyBlob = JSON.stringify(
+  { v: 1, kdf: "PBKDF2-SHA256", iterations: 600000, salt: "QUFB", iv: "QUFB", ct: "QUFB" });
+
+{
+  // 共有ブロブあり + owner パラメータなし → パスワード UI のみ（PAT 設定は非表示）
+  const { els } = await runPage("index.html", { "shared-token.json": dummyBlob }, { token: null });
+  assert("auth: 閲覧者にはパスワード UI", els.get("pwBlock").hidden === false);
+  assert("auth: 閲覧者に PAT 設定は非表示", els.get("patBlock").hidden === true);
+}
+{
+  // 共有ブロブあり + ?owner=1 → PAT 設定も表示
+  const { els } = await runPage("index.html", { "shared-token.json": dummyBlob },
+    { token: null, search: "?owner=1" });
+  assert("auth: 所有者にはパスワード UI + PAT 設定", els.get("pwBlock").hidden === false
+    && els.get("patBlock").hidden === false);
+}
+{
+  // 共有ブロブなし → 従来どおり PAT 設定を表示（展開済み）
+  const { els } = await runPage("index.html", {}, { token: null });
+  assert("auth: ブロブ無しなら PAT 設定を表示", els.get("patBlock").hidden === false
+    && els.get("patBlock").open === true);
+  assert("auth: ブロブ無しならパスワード UI 非表示", els.get("pwBlock").hidden === true);
+}
+
 // ---------- ページ横断の不変条件 ----------
 
 {
@@ -253,6 +287,8 @@ const healthLog = `date,exercise_min
     assert(`${name}: 共有パスワード UI`, html.includes('id="pwInput"') && html.includes('id="pwSubmit"'));
     assert(`${name}: 共有トークン生成ツール`, html.includes('id="mkShared"') && html.includes('id="mkOut"'));
     assert(`${name}: shared-token.json を参照`, html.includes("assets/shared-token.json"));
+    assert(`${name}: 所有者 UI は ?owner=1 で制御`,
+      html.includes('get("owner")') && html.includes('id="patBlock" hidden'));
     assert(`${name}: ダークモード追従`, html.includes("prefers-color-scheme: dark"));
     assert(`${name}: モーション設定の尊重`, html.includes("prefers-reduced-motion"));
     assert(`${name}: ビルド無し（CDN Chart.js）`, html.includes("cdn.jsdelivr.net/npm/chart.js"));
