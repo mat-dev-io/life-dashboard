@@ -400,6 +400,7 @@ const dummyBlob = JSON.stringify(
   const assetMax = {
     "assets/hero/sleep-hero.webp": 250_000,
     "assets/hero/activity-hero.webp": 250_000,
+    "assets/hero/screen-hero.webp": 250_000,
     "assets/icon/apple-touch-icon.png": 100_000,
     "assets/icon/icon-192.png": 100_000,
     "assets/icon/icon-512.png": 300_000,
@@ -421,6 +422,7 @@ const dummyBlob = JSON.stringify(
   }
   assert("index: ヒーロー背景画像", idx.includes("assets/hero/sleep-hero.webp"));
   assert("activity: ヒーロー背景画像", act.includes("assets/hero/activity-hero.webp"));
+  assert("screen: ヒーロー背景画像", scr.includes("assets/hero/screen-hero.webp"));
 
   // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
   for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6], ["screen", scr, 6]]) {

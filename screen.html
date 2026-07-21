@@ -133,8 +133,7 @@
 
   .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
 
-  /* フルスクリーンヒーロー: 専用背景画像を持たないため、画面の光を思わせる
-     グラデーションで組む（他ページの写真ヒーローと同じ常時ダークの見え方に揃える） */
+  /* フルスクリーンヒーロー: 背景画像に合わせて常時ダーク（配下の変数をダーク用に上書き） */
   .hero-section {
     --text: #f5f5f7;
     --text-2: rgba(255,255,255,0.78);
@@ -150,18 +149,14 @@
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     text-align: center; padding: 48px 16px 72px;
     overflow: hidden;
-    background:
-      radial-gradient(115% 75% at 50% 6%, rgba(57,135,229,0.42), transparent 62%),
-      radial-gradient(95% 65% at 84% 92%, rgba(144,133,233,0.34), transparent 66%),
-      radial-gradient(80% 55% at 12% 78%, rgba(201,133,0,0.18), transparent 70%),
-      #0b0d1a;
+    background: #0b0d1a url("assets/hero/screen-hero.webp") center / cover no-repeat;
     color: var(--text);
   }
-  /* 下端をページ背景へ溶かす */
+  /* 可読性のための減光 + 下端をページ背景へ溶かす */
   .hero-section::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     background: linear-gradient(to bottom,
-      rgba(6,8,20,0.18), rgba(6,8,20,0.00) 38%, rgba(6,8,20,0.30) 78%, var(--page) 100%);
+      rgba(6,8,20,0.30), rgba(6,8,20,0.10) 40%, rgba(6,8,20,0.35) 78%, var(--page) 100%);
   }
   .hero-section > * { position: relative; }
   .eyebrow {
