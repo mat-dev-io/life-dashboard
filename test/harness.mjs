@@ -374,6 +374,13 @@ const dummyBlob = JSON.stringify(
     assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
     assert(`${name}: JS 無効時はステージを縦積み表示`, html.includes(".stagegroup:not(.js)"));
   }
+  // 表示用語の統一: 同じものを一つの名前で呼ぶ（テーブルだけ略すと迷子になる）
+  assert("screen: 「取り上げ」の表記ゆれが無い", !scr.includes("取上"));
+  // 検査対象は <body> のマークアップのみ（CSS / JS のコメントは表示されない）
+  const scrMarkup = scr.split("</style>")[1].split('<script>\n"use strict"')[0];
+  assert("screen: UI 文言は「介入前」に統一（ベースラインはコード側の語）",
+    !scrMarkup.includes("ベースライン"));
+
   // 3 ページが相互にリンクしていること（トップバーのナビ）
   for (const [name, html] of pages) {
     for (const href of ["index.html", "activity.html", "screen.html"]) {
