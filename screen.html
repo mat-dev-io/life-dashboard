@@ -456,7 +456,7 @@
     <section class="chapter band-dark" id="todayBand">
       <div class="chapter-inner">
         <h2 class="head"><span>きょうの、</span><span>内訳。</span></h2>
-        <p class="lead">何に溶けたのか、どれだけ手に取ったのか。</p>
+        <p class="lead">消費は、エンタメ・ゲーム・ソーシャル。それ以外は、非消費。</p>
         <div class="card"><div id="dayStats"></div></div>
       </div>
     </section>
@@ -487,7 +487,7 @@
             <div class="stagepanel">
               <div class="stagedesc">
                 <h3>合計スクリーンタイム</h3>
-                <p class="caption">点線 = 介入前ベースライン（平日 379分 / 休日 638分）</p>
+                <p class="caption">点線 = 介入前（平日 379分 / 休日 638分）</p>
                 <p class="desc">一日に画面を見ていた総時間。休日は平日の約 1.7 倍あるため、点線もその日が平日か休日かで切り替わります。</p>
               </div>
               <div class="stagefig">
@@ -497,7 +497,7 @@
             <div class="stagepanel">
               <div class="stagedesc">
                 <h3>消費時間</h3>
-                <p class="caption">エンタメ・ゲーム・ソーシャルの合計。点線 = ベースライン</p>
+                <p class="caption">エンタメ・ゲーム・ソーシャルの合計。点線 = 介入前</p>
                 <p class="desc">減らしたいのはここ。合計が増えても消費が動いていなければ、生活の変化であって浪費の増加ではありません。</p>
               </div>
               <div class="stagefig">
@@ -517,7 +517,7 @@
             <div class="stagepanel">
               <div class="stagedesc">
                 <h3>取り上げ回数</h3>
-                <p class="caption">回。点線 = ベースライン（平日 31回 / 休日 41回）</p>
+                <p class="caption">回。点線 = 介入前（平日 31回 / 休日 41回）</p>
                 <p class="desc">総時間より鋭い衝動の指標。時間が同じでも回数が多い日は、注意が細かく断ち切られています。</p>
               </div>
               <div class="stagefig">
@@ -546,7 +546,7 @@
               <div class="stagedesc">
                 <h3>消費と、それ以外</h3>
                 <p class="caption">合計を消費・非消費に分解</p>
-                <p class="desc">同じ合計時間でも、中身が仕事や学習なら意味が違います。棒の色の比率が、その日の質を表します。</p>
+                <p class="desc">同じ合計時間でも、中身が仕事や学習（非消費）なら意味が違います。棒の色の比率が、その日の質を表します。</p>
               </div>
               <div class="stagefig">
                 <div class="legend">
@@ -577,13 +577,13 @@
         <h2 class="head"><span>数字で、</span><span>振り返る。</span></h2>
         <p class="lead">介入前との差と、すべての記録。</p>
         <div class="card">
-          <h3>介入前ベースラインとの比較</h3>
+          <h3>介入前との比較</h3>
           <p class="caption">基準は 2026-07-01〜07-20 の 20 日間（固定値）。減少 = 改善</p>
           <div class="table-wrap"><table id="blTable"></table></div>
         </div>
         <div class="card">
-          <h3>期間平均</h3>
-          <p class="caption">記録がある日のみ</p>
+          <h3>期間の集計</h3>
+          <p class="caption">平均は記録がある日のみで計算</p>
           <dl class="avgs" id="avgs"></dl>
         </div>
         <details>
@@ -729,12 +729,12 @@ function renderDay() {
     <div class="statgrid">
       ${stat("消費", consume === null ? "" : fmtMin(consume))}
       ${stat("非消費", nonc === null ? "" : fmtMin(nonc))}
+      ${stat("介入前との差",
+        cDiff === null ? "" : `${cDiff > 0 ? "+" : cDiff < 0 ? "−" : "±"}${Math.abs(cDiff)}`,
+        "分", cDiff === null ? "" : cDiff > 0 ? "up" : cDiff < 0 ? "down" : "")}
       ${stat("消費率", rate === null ? "" : Math.round(rate), "%")}
       ${stat("取り上げ", pickups === null ? "" : pickups, "回")}
       ${stat("1回あたり", perPickup === null ? "" : Math.round(perPickup), "分")}
-      ${stat("消費の介入前比",
-        cDiff === null ? "" : `${cDiff > 0 ? "+" : cDiff < 0 ? "−" : "±"}${Math.abs(cDiff)}`,
-        "分", cDiff === null ? "" : cDiff > 0 ? "up" : cDiff < 0 ? "down" : "")}
     </div>`;
 }
 
@@ -761,7 +761,7 @@ function renderAvgs() {
     <div><dt>平均非消費</dt><dd>${nonc === null ? "−" : fmtMin(nonc)}</dd></div>
     <div><dt>平均消費率</dt><dd>${rate === null ? "−" : Math.round(rate) + " %"}</dd></div>
     <div><dt>平均取り上げ</dt><dd>${pickups === null ? "−" : Math.round(pickups) + " 回"}</dd></div>
-    <div><dt>記録日</dt><dd>${recorded} / ${v.length} 日</dd></div>
+    <div><dt>記録日数</dt><dd>${recorded} / ${v.length} 日</dd></div>
     <div><dt>消費が最も多い日</dt><dd>${worst ? `${fmtDateShort(worst.date)} ${fmtMin(worst.consume_min)}` : "−"}</dd></div>
     <div><dt>期間の消費合計</dt><dd>${consume === null ? "−" : fmtMin(consume * recorded)}</dd></div>`;
 }
@@ -792,12 +792,12 @@ function renderBaseline() {
     </tr>`;
   }).join("");
   document.getElementById("blTable").innerHTML = `
-    <tr><th>区分</th><th>合計</th><th>差</th><th>消費</th><th>差</th><th>取上</th><th>差</th></tr>
+    <tr><th>区分</th><th>合計</th><th>差</th><th>消費</th><th>差</th><th>取り上げ</th><th>差</th></tr>
     ${body}`;
 }
 
 function renderTable() {
-  const head = ["日付", "合計", "消費", "非消費", "消費率", "取上", "メモ"];
+  const head = ["日付", "合計", "消費", "非消費", "消費率", "取り上げ", "メモ"];
   const body = [...visibleRows()].reverse().map((r) => {
     const rate = rateOf(r), nonc = nonConsumeOf(r);
     return `<tr>
