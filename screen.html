@@ -10,12 +10,12 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LIFE">
-<meta property="og:title" content="LIFE — アクティビティダッシュボード">
-<meta property="og:description" content="日々の活動量と、心拍の傾向。">
-<meta property="og:url" content="https://mat-dev-io.github.io/life-dashboard/activity.html">
+<meta property="og:title" content="LIFE — スクリーンタイムダッシュボード">
+<meta property="og:description" content="画面に溶けた時間を、数字で見る。">
+<meta property="og:url" content="https://mat-dev-io.github.io/life-dashboard/screen.html">
 <meta property="og:image" content="https://mat-dev-io.github.io/life-dashboard/assets/og/og-image.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<title>アクティビティ | LIFE</title>
+<title>スクリーンタイム | LIFE</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -37,13 +37,12 @@
     --grad-b:      #4a3aa7;
     --grid:        #e8e8ed;
     --baseline:    #d2d2d7;
-    /* チャート配色（dataviz 検証済み。変更時は validate_palette.js で再検証すること） */
-    --steps:       #2a78d6;  /* categorical slot 1 */
-    --energy:      #eda100;  /* slot 4 */
-    --exercise:    #1baf7a;  /* slot 5 */
-    --stand:       #4a3aa7;  /* slot 7 */
-    --rhr:         #e87ba4;  /* slot 3 */
-    --hrv:         #008300;  /* slot 2 */
+    /* チャート配色（睡眠・アクティビティページと同じ dataviz 検証済みパレットの slot を使う） */
+    --total:       #2a78d6;  /* categorical slot 1 */
+    --consume:     #eda100;  /* slot 4 */
+    --nonconsume:  #1baf7a;  /* slot 5 */
+    --rate:        #4a3aa7;  /* slot 7 */
+    --pickups:     #e87ba4;  /* slot 3 */
     --good:        #006300;
     --bad:         #d03b3b;
   }
@@ -67,12 +66,11 @@
       --grad-b:      #9085e9;
       --grid:        #2c2c2e;
       --baseline:    #3a3a3c;
-      --steps:       #3987e5;
-      --energy:      #c98500;
-      --exercise:    #199e70;
-      --stand:       #9085e9;
-      --rhr:         #d55181;
-      --hrv:         #0ca30c;
+      --total:       #3987e5;
+      --consume:     #c98500;
+      --nonconsume:  #199e70;
+      --rate:        #9085e9;
+      --pickups:     #d55181;
       --good:        #0ca30c;
       --bad:         #e66767;
     }
@@ -91,12 +89,13 @@
     --card-shadow: none;
     --grid:        #2c2c2e;
     --baseline:    #3a3a3c;
-    --steps:       #3987e5;
-    --energy:      #c98500;
-    --exercise:    #199e70;
-    --stand:       #9085e9;
-    --rhr:         #d55181;
-    --hrv:         #0ca30c;
+    --total:       #3987e5;
+    --consume:     #c98500;
+    --nonconsume:  #199e70;
+    --rate:        #9085e9;
+    --pickups:     #d55181;
+    --good:        #0ca30c;
+    --bad:         #e66767;
     background: #000;
     color: var(--text);
   }
@@ -134,27 +133,35 @@
 
   .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
 
-  /* フルスクリーンヒーロー: 背景画像に合わせて常時ダーク（配下の変数をダーク用に上書き） */
+  /* フルスクリーンヒーロー: 専用背景画像を持たないため、画面の光を思わせる
+     グラデーションで組む（他ページの写真ヒーローと同じ常時ダークの見え方に揃える） */
   .hero-section {
     --text: #f5f5f7;
     --text-2: rgba(255,255,255,0.78);
     --text-3: rgba(255,255,255,0.6);
     --fill: rgba(255,255,255,0.16);
-    --grad-a: #3987e5;
-    --grad-b: #9085e9;
+    /* 数字のグラデーションはページごとに違える（睡眠 = 紫→青、活動 = 青→紫）。
+       ここは主題の「消費」を示すアンバーで締める */
+    --grad-a: #9085e9;
+    --grad-b: #c98500;
+    --good: #30d158;
     position: relative;
     min-height: max(560px, 92svh);
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     text-align: center; padding: 48px 16px 72px;
     overflow: hidden;
-    background: #0e1226 url("assets/hero/activity-hero.webp") center / cover no-repeat;
+    background:
+      radial-gradient(115% 75% at 50% 6%, rgba(57,135,229,0.42), transparent 62%),
+      radial-gradient(95% 65% at 84% 92%, rgba(144,133,233,0.34), transparent 66%),
+      radial-gradient(80% 55% at 12% 78%, rgba(201,133,0,0.18), transparent 70%),
+      #0b0d1a;
     color: var(--text);
   }
-  /* 可読性のための減光 + 下端をページ背景へ溶かす */
+  /* 下端をページ背景へ溶かす */
   .hero-section::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     background: linear-gradient(to bottom,
-      rgba(6,8,20,0.30), rgba(6,8,20,0.10) 40%, rgba(6,8,20,0.35) 78%, var(--page) 100%);
+      rgba(6,8,20,0.18), rgba(6,8,20,0.00) 38%, rgba(6,8,20,0.30) 78%, var(--page) 100%);
   }
   .hero-section > * { position: relative; }
   .eyebrow {
@@ -167,7 +174,7 @@
     margin: 0 0 22px;
   }
   .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px; }
-  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 11em; }
+  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 13em; }
   .daynav button {
     width: 32px; height: 32px; border: 0; border-radius: 50%;
     background: var(--fill); color: var(--text);
@@ -184,6 +191,8 @@
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .hero-value small { font-size: 0.42em; font-weight: 700; }
+  .hero-goal { font-size: 0.9rem; font-weight: 600; color: var(--text-2); }
+  .hero-goal.ok { color: var(--good); }
 
   .scrollcue {
     position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -238,6 +247,9 @@
     font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
   }
   .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
+  /* 介入前ベースラインとの差。増加 = 悪化、減少 = 改善（消費を減らすのが目的） */
+  .up { color: var(--bad); }
+  .down { color: var(--good); }
 
   /* 期間フィルタ: トップバー下に張り付く iOS 風セグメンテッドコントロール */
   .filterbar {
@@ -259,6 +271,13 @@
   }
   .filters button[aria-pressed="true"] {
     background: var(--seg-active); box-shadow: var(--seg-shadow); font-weight: 600;
+  }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.75rem;
+            color: var(--text-2); margin-bottom: 8px; }
+  .legend span::before {
+    content: ""; display: inline-block; width: 10px; height: 10px;
+    border-radius: 3px; background: var(--c); margin-right: 4px;
   }
 
   .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
@@ -344,6 +363,7 @@
   }
   .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
   .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  .stagefig .legend { justify-content: center; margin-bottom: 4px; }
   /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
   @media (min-width: 640px) {
     .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
@@ -375,8 +395,8 @@
     <span class="brand">LIFE</span>
     <nav class="topnav">
       <a href="index.html">睡眠</a>
-      <a href="activity.html" aria-current="page">アクティビティ</a>
-      <a href="screen.html">スクリーン</a>
+      <a href="activity.html">アクティビティ</a>
+      <a href="screen.html" aria-current="page">スクリーン</a>
     </nav>
   </div>
 </header>
@@ -424,10 +444,10 @@
 
   <div id="content" hidden>
 
-    <!-- ヒーロー: その日の活動を一つの数字で語る -->
+    <!-- ヒーロー: その日に画面へ溶けた時間を一つの数字で語る -->
     <section class="hero-section" id="dayCard">
-      <p class="eyebrow">アクティビティ</p>
-      <h1 class="tagline"><span>今日も、</span><span>動いた。</span></h1>
+      <p class="eyebrow">スクリーンタイム</p>
+      <h1 class="tagline"><span>画面に、</span><span>溶けた。</span></h1>
       <div class="daynav">
         <button id="prevDay" aria-label="前の日">‹</button>
         <h2 id="dayTitle"></h2>
@@ -440,8 +460,8 @@
     <!-- きょうのバンド: その日のディテール（常時ダーク） -->
     <section class="chapter band-dark" id="todayBand">
       <div class="chapter-inner">
-        <h2 class="head"><span>きょうの、</span><span>からだ。</span></h2>
-        <p class="lead">活動と回復を、ひと目で。</p>
+        <h2 class="head"><span>きょうの、</span><span>内訳。</span></h2>
+        <p class="lead">何に溶けたのか、どれだけ手に取ったのか。</p>
         <div class="card"><div id="dayStats"></div></div>
       </div>
     </section>
@@ -454,59 +474,59 @@
       </div>
     </div>
 
-    <!-- 動く: スクロール駆動ステージ -->
+    <!-- 4 つの数字: スクロール駆動ステージ -->
     <section class="chapter alt stagechapter">
       <div class="chapter-inner">
-        <h2 class="head"><span>4つの数字。</span><span>どれも正直。</span></h2>
-        <p class="lead">スクロールで、次の数字へ。</p>
+        <h2 class="head"><span>4つの数字。</span><span>基準は、はじめの20日。</span></h2>
+        <p class="lead">点線が、介入前の自分。</p>
       </div>
       <div class="stagegroup" style="--stages:4">
         <div class="stagepin">
           <div class="stagetabs" role="tablist" aria-label="グラフ切替">
-            <button aria-selected="true">歩数</button>
-            <button aria-selected="false">エネルギー</button>
-            <button aria-selected="false">エクササイズ</button>
-            <button aria-selected="false">スタンド</button>
+            <button aria-selected="true">合計</button>
+            <button aria-selected="false">消費</button>
+            <button aria-selected="false">消費率</button>
+            <button aria-selected="false">取り上げ</button>
           </div>
           <div class="stagepanels">
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>歩数</h3>
-                <p class="caption">日ごとの合計</p>
-                <p class="desc">一日の合計歩数。絶対量より先に、ゼロの日をつくらないことから始めます。</p>
+                <h3>合計スクリーンタイム</h3>
+                <p class="caption">点線 = 介入前ベースライン（平日 379分 / 休日 638分）</p>
+                <p class="desc">一日に画面を見ていた総時間。休日は平日の約 1.7 倍あるため、点線もその日が平日か休日かで切り替わります。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+                <div class="chart-wrap"><canvas id="totalChart"></canvas></div>
               </div>
             </div>
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>アクティブエネルギー</h3>
-                <p class="caption">kcal</p>
-                <p class="desc">安静時を上回って使ったエネルギー。動いた強度が、そのまま反映されます。</p>
+                <h3>消費時間</h3>
+                <p class="caption">エンタメ・ゲーム・ソーシャルの合計。点線 = ベースライン</p>
+                <p class="desc">減らしたいのはここ。合計が増えても消費が動いていなければ、生活の変化であって浪費の増加ではありません。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+                <div class="chart-wrap"><canvas id="consumeChart"></canvas></div>
               </div>
             </div>
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>エクササイズ時間</h3>
-                <p class="caption">分</p>
-                <p class="desc">早歩き以上の運動として記録された時間。週 5 日の実施が目標です。</p>
+                <h3>消費率</h3>
+                <p class="caption">合計に占める消費の割合（%）</p>
+                <p class="desc">率は分母に振り回されます。作業で合計が伸びた日は率が下がるだけなので、必ず消費時間そのものと併せて読みます。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+                <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
               </div>
             </div>
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>スタンド時間</h3>
-                <p class="caption">分</p>
-                <p class="desc">立って動いていた時間。座りっぱなしの日は、ここが正直に凹みます。</p>
+                <h3>取り上げ回数</h3>
+                <p class="caption">回。点線 = ベースライン（平日 31回 / 休日 41回）</p>
+                <p class="desc">総時間より鋭い衝動の指標。時間が同じでも回数が多い日は、注意が細かく断ち切られています。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+                <div class="chart-wrap"><canvas id="pickupChart"></canvas></div>
               </div>
             </div>
           </div>
@@ -514,37 +534,41 @@
       </div>
     </section>
 
-    <!-- 整える（常時ダーク）: スクロール駆動ステージ -->
-    <section class="chapter band-dark stagechapter" id="calmBand">
+    <!-- かたち（常時ダーク）: スクロール駆動ステージ -->
+    <section class="chapter band-dark stagechapter" id="shapeBand">
       <div class="chapter-inner">
-        <h2 class="head">整える。</h2>
-        <p class="lead">静かな心拍は、回復の証。</p>
+        <h2 class="head"><span>時間の、</span><span>かたち。</span></h2>
+        <p class="lead">何に使ったか。いつ増えるか。</p>
       </div>
       <div class="stagegroup" style="--stages:2">
         <div class="stagepin">
           <div class="stagetabs" role="tablist" aria-label="グラフ切替">
-            <button aria-selected="true">心拍</button>
-            <button aria-selected="false">HRV</button>
+            <button aria-selected="true">内訳</button>
+            <button aria-selected="false">曜日</button>
           </div>
           <div class="stagepanels">
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>安静時心拍数</h3>
-                <p class="caption">bpm</p>
-                <p class="desc">安静時の心拍数。ゆっくり下がる傾向は体力向上のサイン、急な上昇は疲労や体調変化の合図です。</p>
+                <h3>消費と、それ以外</h3>
+                <p class="caption">合計を消費・非消費に分解</p>
+                <p class="desc">同じ合計時間でも、中身が仕事や学習なら意味が違います。棒の色の比率が、その日の質を表します。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+                <div class="legend">
+                  <span style="--c:var(--consume)">消費</span>
+                  <span style="--c:var(--nonconsume)">非消費</span>
+                </div>
+                <div class="chart-wrap"><canvas id="splitChart"></canvas></div>
               </div>
             </div>
             <div class="stagepanel">
               <div class="stagedesc">
-                <h3>心拍変動 HRV</h3>
-                <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
-                <p class="desc">心拍のゆらぎは、自律神経の回復力の指標。単日ではなく、7 日移動平均（線）の傾きで読みます。</p>
+                <h3>曜日のかたち</h3>
+                <p class="caption">曜日別の平均合計時間</p>
+                <p class="desc">増えるのは特定の曜日です。土日が突出しているなら、平日の習慣ではなく休日の設計を変えるほうが効きます。7 日表示では各曜日 1 日ぶんなので、傾向は 30 日以上で読みます。</p>
               </div>
               <div class="stagefig">
-                <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+                <div class="chart-wrap"><canvas id="dowChart"></canvas></div>
               </div>
             </div>
           </div>
@@ -556,7 +580,12 @@
     <section class="chapter">
       <div class="chapter-inner">
         <h2 class="head"><span>数字で、</span><span>振り返る。</span></h2>
-        <p class="lead">期間平均と、すべての記録。</p>
+        <p class="lead">介入前との差と、すべての記録。</p>
+        <div class="card">
+          <h3>介入前ベースラインとの比較</h3>
+          <p class="caption">基準は 2026-07-01〜07-20 の 20 日間（固定値）。減少 = 改善</p>
+          <div class="table-wrap"><table id="blTable"></table></div>
+        </div>
         <div class="card">
           <h3>期間平均</h3>
           <p class="caption">記録がある日のみ</p>
@@ -573,7 +602,7 @@
 </main>
 
 <footer class="foot">
-  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新）<br>
+  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/screen-daily.csv">LIFE/data/health/screen-daily.csv</a>（Issue #63 への <code>log screen</code> コメントから転記）<br>
   <a href="#" id="changeToken">トークンを変更</a>
 </footer>
 
@@ -581,14 +610,20 @@
 "use strict";
 // private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
 const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/health/";
-const METRICS_API = API_BASE + "metrics-daily.csv?ref=main";
-const LOG_API = API_BASE + "health-log.csv?ref=main";
-const TOKEN_KEY = "life_dashboard_pat"; // 睡眠ページと共用
+const SCREEN_API = API_BASE + "screen-daily.csv?ref=main";
+const TOKEN_KEY = "life_dashboard_pat"; // 睡眠・アクティビティページと共用
+
+// 介入前ベースライン（2026-07-01〜07-20 の 20 日・固定値。書き換えない）
+// 出典: LIFE/docs/reports/20260721212948-screen-time-baseline-analysis.md
+const BL = {
+  weekday: { label: "平日", total: 379, consume: 272, rate: 72, pickups: 31 },
+  holiday: { label: "休日・祝", total: 638, consume: 554, rate: 87, pickups: 41 },
+};
 
 Chart.defaults.font.family =
   '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
 
-let rows = [];         // 日付昇順の統合行 {date, steps, active_kcal, stand_min, resting_hr, hrv_ms, exercise_min}
+let rows = [];         // 日付昇順の行 {date, total_min, consume_min, pickups, notes}
 let selIdx = -1;
 let rangeDays = 7;
 let charts = [];
@@ -603,14 +638,34 @@ const fmtMin = (m) => {
   const h = Math.floor(m / 60), r = m % 60;
   return h ? (r ? `${h}時間${r}分` : `${h}時間`) : `${r}分`;
 };
-const fmtInt = (n) => Number(n).toLocaleString("ja-JP");
+const fmtMinRich = (m) => {
+  m = Math.round(m);
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? `${h}<small>時間</small>${r}<small>分</small>` : `${r}<small>分</small>`;
+};
 const WDAY = ["日", "月", "火", "水", "木", "金", "土"];
 // YYYY-MM-DD を UTC としてパースし曜日を得る（端末 TZ に依存しない）
-const weekday = (d) => {
+const wdayIdx = (d) => {
   const [y, mo, da] = d.split("-").map(Number);
-  return WDAY[new Date(Date.UTC(y, mo - 1, da)).getUTCDay()];
+  return new Date(Date.UTC(y, mo - 1, da)).getUTCDay();
 };
+const weekday = (d) => WDAY[wdayIdx(d)];
 const fmtDateShort = (d) => `${d.slice(5).replace("-", "/")}(${weekday(d)})`;
+
+// 休日判定: 土日、または notes に「祝」を含む日（祝日は休日側に分類する）
+const isHoliday = (r) => [0, 6].includes(wdayIdx(r.date)) || /祝/.test(r.notes || "");
+const blOf = (r) => (isHoliday(r) ? BL.holiday : BL.weekday);
+
+const num = (x) => (x === "" || x === undefined || x === null ? null : Number(x));
+// 消費率は合計が無い日には定義できない
+const rateOf = (r) => {
+  const t = num(r.total_min), c = num(r.consume_min);
+  return t && c !== null ? (c / t) * 100 : null;
+};
+const nonConsumeOf = (r) => {
+  const t = num(r.total_min), c = num(r.consume_min);
+  return t !== null && c !== null ? t - c : null;
+};
 
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).map((l) => l.replace(/\r$/, ""));
@@ -621,34 +676,15 @@ function parseCsv(text) {
   });
 }
 
-// metrics-daily / health-log(exercise_min) を日付キーで統合する
-function buildRows(metrics, log) {
-  const map = {};
-  const at = (d) => (map[d] ??= {
-    date: d, steps: "", active_kcal: "", stand_min: "", resting_hr: "", hrv_ms: "", exercise_min: "",
-  });
-  for (const r of metrics || []) {
-    Object.assign(at(r.date), {
-      steps: r.steps, active_kcal: r.active_kcal,
-      stand_min: r.stand_min, resting_hr: r.resting_hr,
-      hrv_ms: r.hrv_ms ?? "", // 列追加前の CSV には無い
-    });
-  }
-  for (const r of log || []) {
-    if ((r.exercise_min || "") !== "") at(r.date).exercise_min = r.exercise_min;
-  }
-  return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
-}
-
 function visibleRows() {
   return rows.slice(-rangeDays);
 }
 
-// ---------- 一日のアクティビティ（ヒーロー + バンドの指標グリッド） ----------
+// ---------- 一日のスクリーンタイム（ヒーロー + バンドの指標グリッド） ----------
 
-const stat = (label, value, unit) => `
+const stat = (label, value, unit, cls = "") => `
   <div class="stat"><div class="label">${label}</div>
-    <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
+    <div class="value${cls ? " " + cls : ""}">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
 
 // 初回表示だけ数字をカウントアップさせる（reduced-motion と非対応環境では即時表示）
 let heroAnimated = false;
@@ -656,7 +692,7 @@ function setHeroValue(target) {
   const el = document.getElementById("heroNum");
   if (heroAnimated || typeof requestAnimationFrame === "undefined"
       || matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    el.innerHTML = fmtInt(target);
+    el.innerHTML = fmtMinRich(target);
     return;
   }
   heroAnimated = true;
@@ -664,7 +700,7 @@ function setHeroValue(target) {
   const tick = () => {
     const p = Math.min(1, (Date.now() - t0) / dur);
     const ease = 1 - Math.pow(1 - p, 3);
-    el.innerHTML = fmtInt(Math.round(target * ease));
+    el.innerHTML = fmtMinRich(Math.round(target * ease));
     if (p < 1) requestAnimationFrame(tick);
   };
   tick();
@@ -672,55 +708,112 @@ function setHeroValue(target) {
 
 function renderDay() {
   const r = rows[selIdx];
-  document.getElementById("dayTitle").textContent = `${r.date} のアクティビティ`;
+  const bl = blOf(r);
+  document.getElementById("dayTitle").textContent = `${r.date}（${bl.label}）`;
   document.getElementById("prevDay").disabled = selIdx <= 0;
   document.getElementById("nextDay").disabled = selIdx >= rows.length - 1;
 
+  const total = num(r.total_min);
+  const diff = total === null ? null : total - bl.total;
   document.getElementById("tiles").innerHTML = `
-    <div class="hero-label">歩数</div>
-    <div class="hero-value">${r.steps === "" ? "−" : '<span id="heroNum"></span><small> 歩</small>'}</div>`;
-  if (r.steps !== "") setHeroValue(Number(r.steps));
+    <div class="hero-label">1日の合計</div>
+    <div class="hero-value">${total === null ? "−" : '<span id="heroNum"></span>'}</div>
+    <div class="hero-goal${diff !== null && diff <= 0 ? " ok" : ""}">${
+      diff === null ? "記録なし"
+        : diff <= 0 ? `介入前より ${fmtMin(-diff)} 少ない`
+        : `介入前より ${fmtMin(diff)} 多い`}</div>`;
+  if (total !== null) setHeroValue(total);
 
+  const consume = num(r.consume_min);
+  const nonc = nonConsumeOf(r);
+  const rate = rateOf(r);
+  const pickups = num(r.pickups);
+  const perPickup = total !== null && pickups ? total / pickups : null;
+  const cDiff = consume === null ? null : consume - bl.consume;
   document.getElementById("dayStats").innerHTML = `
     <div class="statgrid">
-      ${stat("エクササイズ", r.exercise_min, "分")}
-      ${stat("アクティブ", r.active_kcal, "kcal")}
-      ${stat("スタンド", r.stand_min, "分")}
-      ${stat("安静時心拍", r.resting_hr, "bpm")}
-      ${stat("心拍変動", r.hrv_ms, "ms")}
+      ${stat("消費", consume === null ? "" : fmtMin(consume))}
+      ${stat("非消費", nonc === null ? "" : fmtMin(nonc))}
+      ${stat("消費率", rate === null ? "" : Math.round(rate), "%")}
+      ${stat("取り上げ", pickups === null ? "" : pickups, "回")}
+      ${stat("1回あたり", perPickup === null ? "" : Math.round(perPickup), "分")}
+      ${stat("消費の介入前比",
+        cDiff === null ? "" : `${cDiff > 0 ? "+" : cDiff < 0 ? "−" : "±"}${Math.abs(cDiff)}`,
+        "分", cDiff === null ? "" : cDiff > 0 ? "up" : cDiff < 0 ? "down" : "")}
     </div>`;
 }
 
 // ---------- 期間サマリ ----------
 
-function avgOf(key) {
-  const vals = visibleRows().map((r) => r[key]).filter((x) => x !== "").map(Number);
-  return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : null;
+function avgOfValues(vals) {
+  const xs = vals.filter((x) => x !== null && !Number.isNaN(x));
+  return xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null;
 }
+const avgOf = (key, list = visibleRows()) => avgOfValues(list.map((r) => num(r[key])));
 
 function renderAvgs() {
   const v = visibleRows();
-  const steps = avgOf("steps"), kcal = avgOf("active_kcal");
-  const ex = avgOf("exercise_min"), stand = avgOf("stand_min"), rhr = avgOf("resting_hr");
-  const hrv = avgOf("hrv_ms");
-  const exDays = v.filter((r) => Number(r.exercise_min) > 0).length;
+  const total = avgOf("total_min"), consume = avgOf("consume_min");
+  const pickups = avgOf("pickups");
+  const nonc = avgOfValues(v.map(nonConsumeOf));
+  const rate = avgOfValues(v.map(rateOf));
+  const recorded = v.filter((r) => num(r.total_min) !== null).length;
+  const worst = v.filter((r) => num(r.consume_min) !== null)
+    .sort((a, b) => Number(b.consume_min) - Number(a.consume_min))[0];
   document.getElementById("avgs").innerHTML = `
-    <div><dt>平均歩数</dt><dd>${steps === null ? "−" : fmtInt(Math.round(steps)) + " 歩"}</dd></div>
-    <div><dt>平均アクティブエネルギー</dt><dd>${kcal === null ? "−" : Math.round(kcal) + " kcal"}</dd></div>
-    <div><dt>平均エクササイズ</dt><dd>${ex === null ? "−" : fmtMin(ex)}</dd></div>
-    <div><dt>運動日</dt><dd>${exDays} / ${v.length} 日</dd></div>
-    <div><dt>平均スタンド</dt><dd>${stand === null ? "−" : fmtMin(stand)}</dd></div>
-    <div><dt>平均安静時心拍</dt><dd>${rhr === null ? "−" : Math.round(rhr) + " bpm"}</dd></div>
-    <div><dt>平均心拍変動</dt><dd>${hrv === null ? "−" : Math.round(hrv) + " ms"}</dd></div>`;
+    <div><dt>平均合計</dt><dd>${total === null ? "−" : fmtMin(total)}</dd></div>
+    <div><dt>平均消費</dt><dd>${consume === null ? "−" : fmtMin(consume)}</dd></div>
+    <div><dt>平均非消費</dt><dd>${nonc === null ? "−" : fmtMin(nonc)}</dd></div>
+    <div><dt>平均消費率</dt><dd>${rate === null ? "−" : Math.round(rate) + " %"}</dd></div>
+    <div><dt>平均取り上げ</dt><dd>${pickups === null ? "−" : Math.round(pickups) + " 回"}</dd></div>
+    <div><dt>記録日</dt><dd>${recorded} / ${v.length} 日</dd></div>
+    <div><dt>消費が最も多い日</dt><dd>${worst ? `${fmtDateShort(worst.date)} ${fmtMin(worst.consume_min)}` : "−"}</dd></div>
+    <div><dt>期間の消費合計</dt><dd>${consume === null ? "−" : fmtMin(consume * recorded)}</dd></div>`;
+}
+
+// 平日・休日を分けてベースラインと比べる（混ぜて平均すると 1.7 倍差に変化が埋もれる）
+function renderBaseline() {
+  const v = visibleRows();
+  const cell = (now, base, unit, fmt) => {
+    if (now === null) return `<td>−</td><td>−</td>`;
+    const d = now - base;
+    const cls = d > 0 ? "up" : d < 0 ? "down" : "";
+    const sign = d > 0 ? "+" : d < 0 ? "−" : "±";
+    return `<td>${fmt(now)}</td>` +
+      `<td class="${cls}">${sign}${fmt(Math.abs(d))}${unit}</td>`;
+  };
+  const asMin = (x) => fmtMin(x);
+  const asCount = (x) => `${Math.round(x)}回`;
+  const body = ["weekday", "holiday"].map((k) => {
+    const bl = BL[k];
+    const list = v.filter((r) => (k === "holiday") === isHoliday(r));
+    const t = avgOf("total_min", list), c = avgOf("consume_min", list);
+    const p = avgOf("pickups", list);
+    return `<tr>
+      <td>${bl.label}<small> ${list.length}日</small></td>
+      ${cell(t, bl.total, "", asMin)}
+      ${cell(c, bl.consume, "", asMin)}
+      ${cell(p, bl.pickups, "", asCount)}
+    </tr>`;
+  }).join("");
+  document.getElementById("blTable").innerHTML = `
+    <tr><th>区分</th><th>合計</th><th>差</th><th>消費</th><th>差</th><th>取上</th><th>差</th></tr>
+    ${body}`;
 }
 
 function renderTable() {
-  const head = ["日付", "歩数", "kcal", "運動", "スタンド", "心拍", "HRV"];
-  const body = [...visibleRows()].reverse().map((r) => `<tr>
-    <td>${r.date}</td><td>${r.steps === "" ? "" : fmtInt(r.steps)}</td>
-    <td>${r.active_kcal}</td><td>${r.exercise_min && r.exercise_min + "分"}</td>
-    <td>${r.stand_min && r.stand_min + "分"}</td><td>${r.resting_hr}</td>
-    <td>${r.hrv_ms}</td></tr>`).join("");
+  const head = ["日付", "合計", "消費", "非消費", "消費率", "取上", "メモ"];
+  const body = [...visibleRows()].reverse().map((r) => {
+    const rate = rateOf(r), nonc = nonConsumeOf(r);
+    return `<tr>
+      <td>${r.date}(${weekday(r.date)})</td>
+      <td>${r.total_min === "" ? "" : fmtMin(r.total_min)}</td>
+      <td>${r.consume_min === "" ? "" : fmtMin(r.consume_min)}</td>
+      <td>${nonc === null ? "" : fmtMin(nonc)}</td>
+      <td>${rate === null ? "" : Math.round(rate) + "%"}</td>
+      <td>${r.pickups === "" ? "" : r.pickups + "回"}</td>
+      <td>${r.notes || ""}</td></tr>`;
+  }).join("");
   document.getElementById("dataTable").innerHTML =
     `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
 }
@@ -732,7 +825,7 @@ function baseOptions(scope) {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
-    plugins: { legend: { display: false } }, // 各チャート単一系列。タイトルが系列名を兼ねる
+    plugins: { legend: { display: false } }, // 系列名はタイトルと HTML の凡例チップが兼ねる
     scales: {
       x: {
         grid: { display: false },
@@ -748,19 +841,37 @@ function baseOptions(scope) {
   };
 }
 
-function barChart(canvasId, key, colorVar, tipFmt) {
+// その日が平日か休日かでベースライン値を切り替える点線（比較の基準線）
+function baselineDataset(v, key, scope) {
+  return {
+    type: "line",
+    label: "介入前",
+    data: v.map((r) => blOf(r)[key]),
+    borderColor: cssVar("--text-3", scope),
+    borderDash: [4, 4], borderWidth: 2,
+    pointRadius: 0, fill: false, stepped: "middle",
+  };
+}
+
+// 棒 + ベースライン点線。tipFmt は棒の値の整形
+function barWithBaseline(canvasId, key, blKey, colorVar, tipFmt, scope) {
   const v = visibleRows();
-  const o = baseOptions();
-  o.plugins.tooltip = { callbacks: { label: (c) => ` ${tipFmt(c.parsed.y)}` } };
+  const o = baseOptions(scope);
+  o.plugins.tooltip = { callbacks: { label: (c) =>
+    ` ${c.dataset.label === "介入前" ? "介入前" : "実績"}: ${tipFmt(c.parsed.y)}` } };
   return new Chart(document.getElementById(canvasId), {
     type: "bar",
     data: {
       labels: v.map((r) => fmtDateShort(r.date)),
-      datasets: [{
-        data: v.map((r) => (r[key] === "" ? null : Number(r[key]))),
-        backgroundColor: cssVar(colorVar),
-        borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
-      }],
+      datasets: [
+        {
+          label: "実績",
+          data: v.map((r) => num(r[key])),
+          backgroundColor: cssVar(colorVar, scope),
+          borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
+        },
+        baselineDataset(v, blKey, scope),
+      ],
     },
     options: o,
   });
@@ -769,64 +880,82 @@ function barChart(canvasId, key, colorVar, tipFmt) {
 function renderCharts() {
   charts.forEach((c) => c.destroy());
   const v = visibleRows();
-  const calm = document.getElementById("calmBand"); // 常時ダークのバンド（心拍系チャートの配色スコープ）
+  const labels = v.map((r) => fmtDateShort(r.date));
+  const shape = document.getElementById("shapeBand"); // 常時ダークのバンド（配色スコープ）
 
   charts = [
-    barChart("stepsChart", "steps", "--steps", (y) => `${fmtInt(y)} 歩`),
-    barChart("energyChart", "active_kcal", "--energy", (y) => `${y} kcal`),
-    barChart("exerciseChart", "exercise_min", "--exercise", (y) => fmtMin(y)),
-    barChart("standChart", "stand_min", "--stand", (y) => fmtMin(y)),
+    barWithBaseline("totalChart", "total_min", "total", "--total", fmtMin),
+    barWithBaseline("consumeChart", "consume_min", "consume", "--consume", fmtMin),
+    barWithBaseline("pickupChart", "pickups", "pickups", "--pickups", (y) => `${Math.round(y)} 回`),
   ];
 
-  // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
-  const rhrColor = cssVar("--rhr", calm);
-  let o = baseOptions(calm);
-  o.scales.y.beginAtZero = false;
-  o.scales.y.suggestedMin = 40;
-  o.plugins.tooltip = { callbacks: { label: (c) => ` 安静時心拍: ${c.parsed.y} bpm` } };
-  charts.push(new Chart(document.getElementById("rhrChart"), {
+  // 消費率のみ折れ線（0〜100% の水準推移として読む指標のため）
+  const rateColor = cssVar("--rate");
+  let o = baseOptions();
+  o.scales.y.max = 100;
+  o.scales.y.ticks.callback = (val) => `${val}%`;
+  o.plugins.tooltip = { callbacks: { label: (c) =>
+    ` ${c.dataset.label === "介入前" ? "介入前" : "消費率"}: ${Math.round(c.parsed.y)}%` } };
+  charts.push(new Chart(document.getElementById("rateChart"), {
     type: "line",
     data: {
-      labels: v.map((r) => fmtDateShort(r.date)),
-      datasets: [{
-        data: v.map((r) => (r.resting_hr === "" ? null : Number(r.resting_hr))),
-        borderColor: rhrColor, backgroundColor: rhrColor + "26", // 線の下に淡い面フィル
-        fill: "start", pointBackgroundColor: rhrColor,
-        borderWidth: 2.5, pointRadius: 3, spanGaps: true, tension: 0.35,
-      }],
+      labels,
+      datasets: [
+        {
+          label: "消費率",
+          data: v.map(rateOf),
+          borderColor: rateColor, backgroundColor: rateColor + "26", // 線の下に淡い面フィル
+          fill: "start", pointBackgroundColor: rateColor,
+          borderWidth: 2.5, pointRadius: 3, spanGaps: true, tension: 0.35,
+        },
+        baselineDataset(v, "rate"),
+      ],
     },
     options: o,
   }));
 
-  // HRV: 単日の生値はノイズが大きいため、7 日移動平均（暦日ベースの遡り窓）を
-  // 主役の線にし、日次中央値は同色の薄い点として添える
-  const dayMs = 86400000;
-  const toMs = (d) => { const [y, mo, da] = d.split("-").map(Number); return Date.UTC(y, mo - 1, da); };
-  const hrvAll = rows.filter((r) => r.hrv_ms !== "").map((r) => ({ t: toMs(r.date), v: Number(r.hrv_ms) }));
-  const ma7 = (d) => {
-    const t = toMs(d);
-    const w = hrvAll.filter((p) => p.t <= t && p.t > t - 7 * dayMs);
-    return w.length ? w.reduce((s, p) => s + p.v, 0) / w.length : null;
-  };
-  const hrvColor = cssVar("--hrv", calm);
-  o = baseOptions(calm);
-  o.scales.y.beginAtZero = false;
-  o.plugins.tooltip = { callbacks: { label: (c) => c.datasetIndex === 0
-    ? ` 7日平均: ${c.parsed.y.toFixed(1)} ms`
-    : ` 日次中央値: ${c.parsed.y} ms` } };
-  charts.push(new Chart(document.getElementById("hrvChart"), {
-    type: "line",
+  // 消費 / 非消費の積み上げ（同じ合計でも中身が違うことを見る）
+  const stageBg = cssVar("--page", shape); // ステージ章の背景。積み上げ間ギャップを背景に溶かす
+  o = baseOptions(shape);
+  o.scales.x.stacked = true;
+  o.scales.y.stacked = true;
+  o.scales.y.ticks.callback = (val) => `${Math.round(val / 60)}h`;
+  o.plugins.tooltip = { callbacks: { label: (c) => ` ${c.dataset.label}: ${fmtMin(c.parsed.y)}` } };
+  const stackDs = (label, vals, color, topRadius) => ({
+    label, data: vals, backgroundColor: color,
+    borderColor: stageBg, borderWidth: 1,
+    borderRadius: topRadius ? 6 : 0, borderSkipped: false,
+    stack: "screen", maxBarThickness: 22,
+  });
+  charts.push(new Chart(document.getElementById("splitChart"), {
+    type: "bar",
     data: {
-      labels: v.map((r) => fmtDateShort(r.date)),
+      labels,
       datasets: [
-        { data: v.map((r) => ma7(r.date)),
-          borderColor: hrvColor, backgroundColor: hrvColor + "1f", // 線の下に淡い面フィル
-          fill: "start",
-          borderWidth: 2.5, pointRadius: 0, spanGaps: true, tension: 0.3 },
-        { data: v.map((r) => (r.hrv_ms === "" ? null : Number(r.hrv_ms))),
-          showLine: false, pointRadius: 3,
-          borderColor: "transparent", backgroundColor: hrvColor + "66" },
+        stackDs("消費", v.map((r) => num(r.consume_min)), cssVar("--consume", shape), false),
+        stackDs("非消費", v.map(nonConsumeOf), cssVar("--nonconsume", shape), true),
       ],
+    },
+    options: o,
+  }));
+
+  // 曜日別の平均合計時間（増える曜日を特定する）。曜日は軸ラベルで自明なため単色で描く
+  // （--rate 等で塗り分けると、同じ色がページ内で二つの意味を持ってしまう）
+  const dowAvg = WDAY.map((_, i) =>
+    avgOfValues(v.filter((r) => wdayIdx(r.date) === i).map((r) => num(r.total_min))));
+  o = baseOptions(shape);
+  o.scales.y.ticks.callback = (val) => `${Math.round(val / 60)}h`;
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 平均: ${fmtMin(c.parsed.y)}` } };
+  charts.push(new Chart(document.getElementById("dowChart"), {
+    type: "bar",
+    data: {
+      labels: WDAY,
+      datasets: [{
+        label: "平均合計",
+        data: dowAvg,
+        backgroundColor: cssVar("--total", shape),
+        borderRadius: 6, borderSkipped: false, maxBarThickness: 30,
+      }],
     },
     options: o,
   }));
@@ -835,6 +964,7 @@ function renderCharts() {
 function renderAll() {
   renderDay();
   renderCharts();
+  renderBaseline();
   renderAvgs();
   renderTable();
 }
@@ -925,6 +1055,7 @@ document.querySelectorAll(".filters button").forEach((btn) => {
     document.querySelectorAll(".filters button").forEach((b) =>
       b.setAttribute("aria-pressed", String(b === btn)));
     renderCharts();
+    renderBaseline();
     renderAvgs();
     renderTable();
   });
@@ -1016,14 +1147,12 @@ async function load() {
   noticeEl.hidden = false;
   noticeEl.textContent = "読み込み中…";
   try {
-    const [metrics, log] = await Promise.all([
-      fetchCsv(METRICS_API, token),
-      fetchCsv(LOG_API, token),
-    ]);
-    rows = buildRows(metrics, log);
+    const daily = await fetchCsv(SCREEN_API, token);
+    rows = (daily || []).filter((r) => r.date)
+      .sort((a, b) => a.date.localeCompare(b.date));
     if (!rows.length) {
       noticeEl.textContent =
-        "データがまだありません。ショートカットからの初回送信後に表示されます（docs/ops/ios-shortcut-health-metrics-log.md）。";
+        "データがまだありません。Issue #63 への log screen コメント後に表示されます（docs/ops/screen-time-log.md）。";
       return;
     }
     selIdx = rows.length - 1;

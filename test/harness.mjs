@@ -251,6 +251,81 @@ const healthLog = `date,exercise_min
     ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
 }
 
+// ---------- スクリーンタイムページ ----------
+
+// 7/17 金（平日）, 7/18 土, 7/19 日, 7/20 月（notes=祝日 → 休日扱い）
+const screenDaily = `date,total_min,consume_min,pickups,notes
+2026-07-17,455,258,27,
+2026-07-18,685,610,38,
+2026-07-19,529,406,52,
+2026-07-20,718,583,39,祝日`;
+
+{
+  const { els, ChartStub, chartByCanvas } = await runPage("screen.html", {
+    "screen-daily.csv": screenDaily,
+  });
+  const t = () => els.get("tiles").innerHTML;
+  const ds = () => els.get("dayStats").innerHTML;
+
+  assert("scr: content 表示", els.get("content").hidden === false);
+  assert("scr: notes=祝日 は休日に分類",
+    els.get("dayTitle").textContent === "2026-07-20（休日・祝）", els.get("dayTitle").textContent);
+  assert("scr: ヒーロー合計時間",
+    els.get("heroNum").innerHTML === "11<small>時間</small>58<small>分</small>",
+    els.get("heroNum").innerHTML);
+  assert("scr: 休日ベースラインとの差", t().includes("介入前より 1時間20分 多い"), t());
+  assert("scr: 非消費 = 合計 − 消費", ds().includes("2時間15分"), ds());
+  assert("scr: 消費率タイル", ds().includes("81<small> %</small>"), ds());
+  assert("scr: 消費の介入前比は増加で up クラス",
+    /class="value up">\+29<small> 分<\/small>/.test(ds()), ds());
+
+  const total = chartByCanvas("totalChart");
+  assert("scr: 合計は棒 + 基準線の 2 系列", total.cfg.data.datasets.length === 2);
+  assert("scr: 合計系列",
+    JSON.stringify(total.cfg.data.datasets[0].data) === "[455,685,529,718]");
+  assert("scr: 基準線は平日/休日で切り替わる",
+    JSON.stringify(total.cfg.data.datasets[1].data) === "[379,638,638,638]",
+    JSON.stringify(total.cfg.data.datasets[1].data));
+
+  const rate = chartByCanvas("rateChart");
+  const rateData = rate.cfg.data.datasets[0].data.map((x) => Math.round(x));
+  assert("scr: 消費率は折れ線",
+    rate.cfg.type === "line" && JSON.stringify(rateData) === "[57,89,77,81]",
+    JSON.stringify(rateData));
+
+  const split = chartByCanvas("splitChart");
+  assert("scr: 積み上げは消費 + 非消費",
+    JSON.stringify(split.cfg.data.datasets[0].data) === "[258,610,406,583]"
+    && JSON.stringify(split.cfg.data.datasets[1].data) === "[197,75,123,135]",
+    JSON.stringify(split.cfg.data.datasets[1].data));
+
+  const dow = chartByCanvas("dowChart");
+  assert("scr: 曜日別平均（記録の無い曜日は null）",
+    JSON.stringify(dow.cfg.data.datasets[0].data) === "[529,718,null,null,null,455,685]",
+    JSON.stringify(dow.cfg.data.datasets[0].data));
+
+  assert("scr: チャート数（棒3 + 率 + 内訳 + 曜日）",
+    ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
+
+  const bl = els.get("blTable").innerHTML;
+  assert("scr: ベースライン比較に平日 1 日 / 休日 3 日", bl.includes("1日") && bl.includes("3日"), bl);
+  assert("scr: 平日合計の差は増加（up）", /class="up">\+1時間16分/.test(bl), bl);
+  assert("scr: 休日消費の差は減少（down）", /class="down">−21分/.test(bl), bl);
+  assert("scr: 取り上げの差は回数表記", /class="up">\+2回/.test(bl), bl);
+
+  assert("scr: 期間平均の記録日", els.get("avgs").innerHTML.includes("4 / 4 日"));
+  assert("scr: 消費が最も多い日", els.get("avgs").innerHTML.includes("07/18(土) 10時間10分"),
+    els.get("avgs").innerHTML);
+  assert("scr: テーブルは新しい日が先頭",
+    els.get("dataTable").innerHTML.indexOf("2026-07-20") < els.get("dataTable").innerHTML.indexOf("2026-07-17"));
+  assert("scr: メモ列に祝日", els.get("dataTable").innerHTML.includes("祝日"));
+
+  // 前日（7/19 日曜）へ
+  els.get("prevDay").listeners.click();
+  assert("scr: 日曜は休日", els.get("dayTitle").textContent === "2026-07-19（休日・祝）");
+  assert("scr: 1回あたり = 合計 / 取り上げ", ds().includes("10<small> 分</small>"), ds());
+}
+
 // ---------- 認証画面の表示分岐（共有ブロブ × owner パラメータ） ----------
 
 const dummyBlob = JSON.stringify(
@@ -282,7 +357,9 @@ const dummyBlob = JSON.stringify(
 {
   const idx = readFileSync(join(root, "index.html"), "utf8");
   const act = readFileSync(join(root, "activity.html"), "utf8");
-  for (const [name, html] of [["index", idx], ["activity", act]]) {
+  const scr = readFileSync(join(root, "screen.html"), "utf8");
+  const pages = [["index", idx], ["activity", act], ["screen", scr]];
+  for (const [name, html] of pages) {
     assert(`${name}: PAT の localStorage キー共用`, html.includes('"life_dashboard_pat"'));
     assert(`${name}: 共有パスワード UI`, html.includes('id="pwInput"') && html.includes('id="pwSubmit"'));
     assert(`${name}: 共有トークン生成ツール`, html.includes('id="mkShared"') && html.includes('id="mkOut"'));
@@ -297,8 +374,14 @@ const dummyBlob = JSON.stringify(
     assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
     assert(`${name}: JS 無効時はステージを縦積み表示`, html.includes(".stagegroup:not(.js)"));
   }
+  // 3 ページが相互にリンクしていること（トップバーのナビ）
+  for (const [name, html] of pages) {
+    for (const href of ["index.html", "activity.html", "screen.html"]) {
+      assert(`${name}: ナビに ${href}`, html.includes(`<a href="${href}"`));
+    }
+  }
   // スクロール駆動ステージ: タブ数とパネル数が一致すること
-  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]]]) {
+  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]], ["screen", scr, [4, 2]]]) {
     const sections = html.split('class="stagegroup"').slice(1);
     assert(`${name}: ステージグループ数`, sections.length === groups.length,
       `found=${sections.length}`);
@@ -330,7 +413,7 @@ const dummyBlob = JSON.stringify(
   }
   const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
   assert("asset: manifest のアイコン 2 種", manifest.icons?.length === 2);
-  for (const [name, html] of [["index", idx], ["activity", act]]) {
+  for (const [name, html] of pages) {
     assert(`${name}: favicon リンク`, html.includes("assets/icon/favicon-32.png"));
     assert(`${name}: apple-touch-icon`, html.includes("assets/icon/apple-touch-icon.png"));
     assert(`${name}: manifest リンク`, html.includes('rel="manifest"'));
@@ -340,7 +423,7 @@ const dummyBlob = JSON.stringify(
   assert("activity: ヒーロー背景画像", act.includes("assets/hero/activity-hero.webp"));
 
   // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
-  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6]]) {
+  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6], ["screen", scr, 6]]) {
     const descs = (html.match(/class="stagedesc"/g) || []).length;
     const figs = (html.match(/class="stagefig"/g) || []).length;
     const bodies = (html.match(/class="desc"/g) || []).length;
