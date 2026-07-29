@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LIFE">
+<meta property="og:title" content="LIFE — アクティビティダッシュボード">
+<meta property="og:description" content="日々の活動量と、心拍の傾向。">
+<meta property="og:url" content="https://mat-dev-io.github.io/life-dashboard/activity.html">
+<meta property="og:image" content="https://mat-dev-io.github.io/life-dashboard/assets/og/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<title>アクティビティ | LIFE</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #fbfbfd;
+    --page-alt:    #f5f5f7;
+    --surface:     #ffffff;
+    --text:        #1d1d1f;
+    --text-2:      #6e6e73;
+    --text-3:      #86868b;
+    --sep:         rgba(0,0,0,0.08);
+    --glass:       rgba(251,251,253,0.72);
+    --fill:        rgba(120,120,128,0.12);
+    --accent:      #0071e3;
+    --seg-active:  #ffffff;
+    --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
+    --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
+    --grad-a:      #2a78d6;
+    --grad-b:      #4a3aa7;
+    --grid:        #e8e8ed;
+    --baseline:    #d2d2d7;
+    /* チャート配色（dataviz 検証済み。変更時は validate_palette.js で再検証すること） */
+    --steps:       #2a78d6;  /* categorical slot 1 */
+    --energy:      #eda100;  /* slot 4 */
+    --exercise:    #1baf7a;  /* slot 5 */
+    --stand:       #4a3aa7;  /* slot 7 */
+    --rhr:         #e87ba4;  /* slot 3 */
+    --hrv:         #008300;  /* slot 2 */
+    --good:        #006300;
+    --bad:         #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:        #000000;
+      --page-alt:    #161617;
+      --surface:     #1c1c1e;
+      --text:        #f5f5f7;
+      --text-2:      #a1a1a6;
+      --text-3:      #86868b;
+      --sep:         rgba(255,255,255,0.14);
+      --glass:       rgba(0,0,0,0.65);
+      --fill:        rgba(120,120,128,0.24);
+      --accent:      #0a84ff;
+      --seg-active:  #636366;
+      --seg-shadow:  none;
+      --card-shadow: none;
+      --grad-a:      #3987e5;
+      --grad-b:      #9085e9;
+      --grid:        #2c2c2e;
+      --baseline:    #3a3a3c;
+      --steps:       #3987e5;
+      --energy:      #c98500;
+      --exercise:    #199e70;
+      --stand:       #9085e9;
+      --rhr:         #d55181;
+      --hrv:         #0ca30c;
+      --good:        #0ca30c;
+      --bad:         #e66767;
+    }
+  }
+  /* 常時ダークのバンド。中のチャートはこのスコープの変数（ダーク検証済み配色）を読む */
+  .band-dark {
+    --page:        #000000;
+    --surface:     #1c1c1e;
+    --text:        #f5f5f7;
+    --text-2:      #a1a1a6;
+    --text-3:      #86868b;
+    --sep:         rgba(255,255,255,0.14);
+    --fill:        rgba(120,120,128,0.24);
+    --seg-active:  #636366;
+    --seg-shadow:  none;
+    --card-shadow: none;
+    --grid:        #2c2c2e;
+    --baseline:    #3a3a3c;
+    --steps:       #3987e5;
+    --energy:      #c98500;
+    --exercise:    #199e70;
+    --stand:       #9085e9;
+    --rhr:         #d55181;
+    --hrv:         #0ca30c;
+    background: #000;
+    color: var(--text);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* すりガラスのトップバー */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
+  .topbar-inner {
+    max-width: 720px; margin-inline: auto;
+    display: flex; align-items: center; gap: 20px;
+    height: 44px; padding: 0 16px;
+  }
+  .brand { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; }
+  .topnav { margin-left: auto; display: flex; gap: 18px; font-size: 0.85rem; }
+  .topnav a { color: var(--text-2); text-decoration: none; }
+  .topnav a[aria-current="page"] { color: var(--text); font-weight: 600; }
+
+  .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
+
+  /* フルスクリーンヒーロー: 背景画像に合わせて常時ダーク（配下の変数をダーク用に上書き） */
+  .hero-section {
+    --text: #f5f5f7;
+    --text-2: rgba(255,255,255,0.78);
+    --text-3: rgba(255,255,255,0.6);
+    --fill: rgba(255,255,255,0.16);
+    --grad-a: #3987e5;
+    --grad-b: #9085e9;
+    position: relative;
+    min-height: max(560px, 92svh);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 48px 16px 72px;
+    overflow: hidden;
+    background: #0e1226 url("assets/hero/activity-hero.webp") center / cover no-repeat;
+    color: var(--text);
+  }
+  /* 可読性のための減光 + 下端をページ背景へ溶かす */
+  .hero-section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom,
+      rgba(6,8,20,0.30), rgba(6,8,20,0.10) 40%, rgba(6,8,20,0.35) 78%, var(--page) 100%);
+  }
+  .hero-section > * { position: relative; }
+  .eyebrow {
+    font-size: 0.8rem; font-weight: 600; color: var(--text-3);
+    letter-spacing: 0.14em; margin: 0 0 12px;
+  }
+  .tagline {
+    font-size: clamp(2.3rem, 11vw, 3.4rem);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
+    margin: 0 0 22px;
+  }
+  .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px; }
+  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 11em; }
+  .daynav button {
+    width: 32px; height: 32px; border: 0; border-radius: 50%;
+    background: var(--fill); color: var(--text);
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
+  }
+  .daynav button:disabled { opacity: 0.3; cursor: default; }
+
+  .hero-label { font-size: 0.8rem; color: var(--text-3); }
+  .hero-value {
+    font-size: clamp(3rem, 16vw, 4.4rem);
+    font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-value small { font-size: 0.42em; font-weight: 700; }
+
+  .scrollcue {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: var(--text-3); font-size: 1.5rem; line-height: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .scrollcue { animation: cue 2.2s ease-in-out infinite; }
+    @keyframes cue {
+      0%, 100% { transform: translate(-50%, 0); opacity: 0.9; }
+      50%      { transform: translate(-50%, 8px); opacity: 0.4; }
+    }
+  }
+
+  /* 章（チャンク化）: 大見出しの断定コピー + リード + コンテンツ */
+  .chapter { padding: 64px 16px; }
+  .chapter.alt { background: var(--page-alt); }
+  .band-dark.chapter { border-block: 1px solid rgba(255,255,255,0.08); }
+  .chapter-inner { max-width: 720px; margin-inline: auto; }
+  .head {
+    font-size: clamp(1.9rem, 9vw, 2.7rem);
+    font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
+    margin: 0 0 10px; text-align: center;
+  }
+  /* 見出しはフレーズ単位でのみ折り返す（1 文字だけの改行を防ぐ） */
+  .head span, .tagline span { display: inline-block; }
+  .lead {
+    color: var(--text-2); font-size: 1rem; line-height: 1.6;
+    margin: 0 0 28px; text-align: center;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--card-shadow);
+  }
+  .card h3 {
+    font-size: 0.95rem; font-weight: 600; margin: 0 0 2px;
+    color: var(--text); letter-spacing: -0.01em;
+  }
+  .caption { font-size: 0.75rem; color: var(--text-3); margin: 0 0 10px; }
+  .chart-wrap { position: relative; height: 170px; }
+
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .stat { padding: 10px 12px; }
+  .stat:not(:nth-child(3n+1)) { border-left: 1px solid var(--sep); }
+  .stat:nth-child(n+4) { border-top: 1px solid var(--sep); }
+  .stat .label { font-size: 0.7rem; color: var(--text-3); }
+  .stat .value {
+    font-size: 0.95rem; font-weight: 600; margin-top: 2px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
+
+  /* 期間フィルタ: トップバー下に張り付く iOS 風セグメンテッドコントロール */
+  .filterbar {
+    position: sticky; top: 45px; z-index: 9;
+    padding: 8px 16px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
+  .filters {
+    display: flex; background: var(--fill); border-radius: 10px;
+    padding: 2px; max-width: 400px; margin-inline: auto;
+  }
+  .filters button {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    font-size: 0.85rem; font-weight: 500; padding: 7px 0;
+    border-radius: 8px; cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] {
+    background: var(--seg-active); box-shadow: var(--seg-shadow); font-weight: 600;
+  }
+
+  .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
+  .avgs dt { color: var(--text-3); font-size: 0.7rem; }
+  .avgs dd { margin: 0 0 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  details { margin: 4px 0 8px; }
+  summary { color: var(--accent); font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 6px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.75rem; white-space: nowrap; width: 100%; }
+  th, td { padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--baseline); }
+  td { border-bottom: 1px solid var(--sep); }
+  th:first-child, td:first-child { text-align: left; }
+
+  .notice { color: var(--text-2); padding: 32px 8px; text-align: center; }
+
+  /* 初回のアクセス設定（共有パスワード / PAT） */
+  .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
+  .auth input {
+    width: 100%; padding: 11px 12px; font-size: 1rem;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text); margin-bottom: 10px;
+  }
+  .auth button {
+    width: 100%; padding: 11px; border: 0; border-radius: 980px;
+    background: var(--accent); color: #fff;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  }
+  .auth .err { color: var(--bad); font-size: 0.85rem; }
+  .auth details { margin-top: 8px; }
+  .auth textarea {
+    width: 100%; padding: 8px; margin-top: 10px;
+    font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text);
+  }
+  .ownertool { border-top: 1px solid var(--sep); margin-top: 16px; padding-top: 12px; }
+
+  .foot {
+    max-width: 720px; margin-inline: auto;
+    color: var(--text-3); font-size: 0.75rem; line-height: 1.8;
+    text-align: center; padding: 32px 16px 48px;
+  }
+  .foot a { color: var(--text-3); }
+
+  /* スクロール駆動ステージ: sticky ピンの中でグラフを 1 枚ずつ切り替える */
+  .stagechapter { padding: 64px 0 0; }
+  .stagechapter .chapter-inner { padding: 0 16px; }
+  .stagegroup { position: relative; }
+  .stagegroup.js { height: calc(var(--stages) * 100svh); }
+  .stagegroup.js .stagepin { position: sticky; top: 0; height: 100svh; }
+  .stagepin {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 104px 16px 24px;
+  }
+  .stagetabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 18px; }
+  .stagetabs button {
+    border: 1px solid var(--sep); background: transparent; color: var(--text-2);
+    border-radius: 980px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .stagetabs button[aria-selected="true"] {
+    background: var(--text); border-color: var(--text); color: var(--page);
+  }
+  .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
+  .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
+  .stagepanel { display: flex; flex-direction: column; gap: 10px; }
+  .stagepanel[hidden] { display: none; }
+  .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
+  .stagegroup.js .stagepanel {
+    position: absolute; inset: 0;
+    opacity: 0; visibility: hidden; transform: translateY(28px);
+  }
+  .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
+  .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
+  .stagedesc h3 {
+    text-align: center; font-size: 1.05rem; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
+  }
+  .stagedesc .caption { text-align: center; }
+  .stagedesc .desc {
+    font-size: 0.85rem; color: var(--text-2); line-height: 1.7; margin: 6px 0 0;
+  }
+  .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
+  @media (min-width: 640px) {
+    .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
+    .stagefig { flex: 1 1 58%; align-self: stretch; min-width: 0; }
+    .stagedesc { flex: 1 1 42%; }
+    .stagedesc h3, .stagedesc .caption { text-align: left; }
+    .stagedesc h3 { font-size: 1.35rem; }
+    .stagedesc .desc { font-size: 0.95rem; }
+  }
+
+  /* スクロールで現れる要素（モーション設定を尊重） */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(18px);
+              transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    .lead.reveal { transition-delay: 0.08s; }
+    .stagegroup.js .stagepanel {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+    }
+    .stagegroup.js .stagepanel.active {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s;
+    }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">LIFE</span>
+    <nav class="topnav">
+      <a href="index.html">睡眠</a>
+      <a href="activity.html" aria-current="page">アクティビティ</a>
+      <a href="screen.html">スクリーン</a>
+      <a href="finance.html">資産</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="narrow">
+    <div id="auth" class="card auth" hidden>
+      <h3>アクセス設定（初回のみ）</h3>
+      <div id="pwBlock" hidden>
+        <p>
+          共有パスワードを入力すると閲覧できます。
+          パスワードはこの端末での復号にだけ使われ、どこにも送信されません。
+        </p>
+        <input id="pwInput" type="password" placeholder="共有パスワード" autocomplete="current-password">
+        <button id="pwSubmit">表示する</button>
+        <p id="pwError" class="err" hidden>パスワードが違います。</p>
+      </div>
+      <details id="patBlock" hidden>
+        <summary>PAT で設定する（所有者向け）</summary>
+        <p>
+          private リポジトリのデータを読むため、Fine-grained PAT をこの端末に保存します。
+          発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+          Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+          <strong>Contents: Read-only のみ</strong>にしてください。
+          トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+        </p>
+        <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+        <button id="saveToken">保存して表示</button>
+        <div class="ownertool">
+          <p>
+            <strong>共有用トークンの作成</strong>:
+            共有専用に発行した読み取り PAT をパスワードで暗号化します（空欄ならこの端末の PAT を使用）。
+            出力された JSON を <code>assets/shared-token.json</code> としてコミットすると、
+            パスワードを知っている人が閲覧できるようになります。
+          </p>
+          <input id="mkPat" type="password" placeholder="共有専用 PAT（空欄 = この端末の PAT）" autocomplete="off">
+          <input id="mkPw" type="password" placeholder="共有パスワード（12 文字以上）" autocomplete="new-password">
+          <button id="mkShared">暗号化 JSON を生成</button>
+          <textarea id="mkOut" readonly rows="4" placeholder="ここに JSON が出力されます"></textarea>
+        </div>
+      </details>
+    </div>
+    <div id="notice" class="notice">読み込み中…</div>
+  </div>
+
+  <div id="content" hidden>
+
+    <!-- ヒーロー: その日の活動を一つの数字で語る -->
+    <section class="hero-section" id="dayCard">
+      <p class="eyebrow">アクティビティ</p>
+      <h1 class="tagline"><span>今日も、</span><span>動いた。</span></h1>
+      <div class="daynav">
+        <button id="prevDay" aria-label="前の日">‹</button>
+        <h2 id="dayTitle"></h2>
+        <button id="nextDay" aria-label="次の日">›</button>
+      </div>
+      <div id="tiles"></div>
+      <div class="scrollcue" aria-hidden="true">⌄</div>
+    </section>
+
+    <!-- きょうのバンド: その日のディテール（常時ダーク） -->
+    <section class="chapter band-dark" id="todayBand">
+      <div class="chapter-inner">
+        <h2 class="head"><span>きょうの、</span><span>からだ。</span></h2>
+        <p class="lead">活動と回復を、ひと目で。</p>
+        <div class="card"><div id="dayStats"></div></div>
+      </div>
+    </section>
+
+    <div class="filterbar">
+      <div class="filters" role="group" aria-label="期間">
+        <button data-days="7" aria-pressed="true">7日</button>
+        <button data-days="30" aria-pressed="false">30日</button>
+        <button data-days="90" aria-pressed="false">90日</button>
+      </div>
+    </div>
+
+    <!-- 動く: スクロール駆動ステージ -->
+    <section class="chapter alt stagechapter">
+      <div class="chapter-inner">
+        <h2 class="head"><span>4つの数字。</span><span>どれも正直。</span></h2>
+        <p class="lead">スクロールで、次の数字へ。</p>
+      </div>
+      <div class="stagegroup" style="--stages:4">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">歩数</button>
+            <button aria-selected="false">エネルギー</button>
+            <button aria-selected="false">エクササイズ</button>
+            <button aria-selected="false">スタンド</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>歩数</h3>
+                <p class="caption">日ごとの合計</p>
+                <p class="desc">一日の合計歩数。絶対量より先に、ゼロの日をつくらないことから始めます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>アクティブエネルギー</h3>
+                <p class="caption">kcal</p>
+                <p class="desc">安静時を上回って使ったエネルギー。動いた強度が、そのまま反映されます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="energyChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>エクササイズ時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">早歩き以上の運動として記録された時間。週 5 日の実施が目標です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="exerciseChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>スタンド時間</h3>
+                <p class="caption">分</p>
+                <p class="desc">立って動いていた時間。座りっぱなしの日は、ここが正直に凹みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="standChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 整える（常時ダーク）: スクロール駆動ステージ -->
+    <section class="chapter band-dark stagechapter" id="calmBand">
+      <div class="chapter-inner">
+        <h2 class="head">整える。</h2>
+        <p class="lead">静かな心拍は、回復の証。</p>
+      </div>
+      <div class="stagegroup" style="--stages:2">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">心拍</button>
+            <button aria-selected="false">HRV</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>安静時心拍数</h3>
+                <p class="caption">bpm</p>
+                <p class="desc">安静時の心拍数。ゆっくり下がる傾向は体力向上のサイン、急な上昇は疲労や体調変化の合図です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="rhrChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>心拍変動 HRV</h3>
+                <p class="caption">ms。薄い点 = 日次中央値、線 = 7日移動平均</p>
+                <p class="desc">心拍のゆらぎは、自律神経の回復力の指標。単日ではなく、7 日移動平均（線）の傾きで読みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="hrvChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 振り返り -->
+    <section class="chapter">
+      <div class="chapter-inner">
+        <h2 class="head"><span>数字で、</span><span>振り返る。</span></h2>
+        <p class="lead">期間平均と、すべての記録。</p>
+        <div class="card">
+          <h3>期間平均</h3>
+          <p class="caption">記録がある日のみ</p>
+          <dl class="avgs" id="avgs"></dl>
+        </div>
+        <details>
+          <summary>詳細テーブル（全指標）</summary>
+          <div class="table-wrap"><table id="dataTable"></table></div>
+        </details>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="foot">
+  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新）<br>
+  <a href="#" id="changeToken">トークンを変更</a>
+</footer>
+
+<script>
+"use strict";
+// private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
+const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/health/";
+const METRICS_API = API_BASE + "metrics-daily.csv?ref=main";
+const LOG_API = API_BASE + "health-log.csv?ref=main";
+const TOKEN_KEY = "life_dashboard_pat"; // 睡眠ページと共用
+
+Chart.defaults.font.family =
+  '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
+
+let rows = [];         // 日付昇順の統合行 {date, steps, active_kcal, stand_min, resting_hr, hrv_ms, exercise_min}
+let selIdx = -1;
+let rangeDays = 7;
+let charts = [];
+
+// 第2引数でスコープ要素を指定すると、その要素に効いている CSS 変数を読む
+// （常時ダークの .band-dark 内のチャートは、ダーク検証済み配色を拾うため必須）
+const cssVar = (name, el = document.documentElement) =>
+  getComputedStyle(el).getPropertyValue(name).trim();
+
+const fmtMin = (m) => {
+  m = Math.round(m);
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? `${h}時間${r}分` : `${h}時間`) : `${r}分`;
+};
+const fmtInt = (n) => Number(n).toLocaleString("ja-JP");
+const WDAY = ["日", "月", "火", "水", "木", "金", "土"];
+// YYYY-MM-DD を UTC としてパースし曜日を得る（端末 TZ に依存しない）
+const weekday = (d) => {
+  const [y, mo, da] = d.split("-").map(Number);
+  return WDAY[new Date(Date.UTC(y, mo - 1, da)).getUTCDay()];
+};
+const fmtDateShort = (d) => `${d.slice(5).replace("-", "/")}(${weekday(d)})`;
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/).map((l) => l.replace(/\r$/, ""));
+  const head = lines[0].split(",");
+  return lines.slice(1).map((l) => {
+    const cells = l.split(",");
+    return Object.fromEntries(head.map((k, i) => [k, cells[i] ?? ""]));
+  });
+}
+
+// metrics-daily / health-log(exercise_min) を日付キーで統合する
+function buildRows(metrics, log) {
+  const map = {};
+  const at = (d) => (map[d] ??= {
+    date: d, steps: "", active_kcal: "", stand_min: "", resting_hr: "", hrv_ms: "", exercise_min: "",
+  });
+  for (const r of metrics || []) {
+    Object.assign(at(r.date), {
+      steps: r.steps, active_kcal: r.active_kcal,
+      stand_min: r.stand_min, resting_hr: r.resting_hr,
+      hrv_ms: r.hrv_ms ?? "", // 列追加前の CSV には無い
+    });
+  }
+  for (const r of log || []) {
+    if ((r.exercise_min || "") !== "") at(r.date).exercise_min = r.exercise_min;
+  }
+  return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function visibleRows() {
+  return rows.slice(-rangeDays);
+}
+
+// ---------- 一日のアクティビティ（ヒーロー + バンドの指標グリッド） ----------
+
+const stat = (label, value, unit) => `
+  <div class="stat"><div class="label">${label}</div>
+    <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
+
+// 初回表示だけ数字をカウントアップさせる（reduced-motion と非対応環境では即時表示）
+let heroAnimated = false;
+function setHeroValue(target) {
+  const el = document.getElementById("heroNum");
+  if (heroAnimated || typeof requestAnimationFrame === "undefined"
+      || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.innerHTML = fmtInt(target);
+    return;
+  }
+  heroAnimated = true;
+  const t0 = Date.now(), dur = 900;
+  const tick = () => {
+    const p = Math.min(1, (Date.now() - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.innerHTML = fmtInt(Math.round(target * ease));
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function renderDay() {
+  const r = rows[selIdx];
+  document.getElementById("dayTitle").textContent = `${r.date} のアクティビティ`;
+  document.getElementById("prevDay").disabled = selIdx <= 0;
+  document.getElementById("nextDay").disabled = selIdx >= rows.length - 1;
+
+  document.getElementById("tiles").innerHTML = `
+    <div class="hero-label">歩数</div>
+    <div class="hero-value">${r.steps === "" ? "−" : '<span id="heroNum"></span><small> 歩</small>'}</div>`;
+  if (r.steps !== "") setHeroValue(Number(r.steps));
+
+  document.getElementById("dayStats").innerHTML = `
+    <div class="statgrid">
+      ${stat("エクササイズ", r.exercise_min, "分")}
+      ${stat("アクティブ", r.active_kcal, "kcal")}
+      ${stat("スタンド", r.stand_min, "分")}
+      ${stat("安静時心拍", r.resting_hr, "bpm")}
+      ${stat("心拍変動", r.hrv_ms, "ms")}
+    </div>`;
+}
+
+// ---------- 期間サマリ ----------
+
+function avgOf(key) {
+  const vals = visibleRows().map((r) => r[key]).filter((x) => x !== "").map(Number);
+  return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : null;
+}
+
+function renderAvgs() {
+  const v = visibleRows();
+  const steps = avgOf("steps"), kcal = avgOf("active_kcal");
+  const ex = avgOf("exercise_min"), stand = avgOf("stand_min"), rhr = avgOf("resting_hr");
+  const hrv = avgOf("hrv_ms");
+  const exDays = v.filter((r) => Number(r.exercise_min) > 0).length;
+  document.getElementById("avgs").innerHTML = `
+    <div><dt>平均歩数</dt><dd>${steps === null ? "−" : fmtInt(Math.round(steps)) + " 歩"}</dd></div>
+    <div><dt>平均アクティブエネルギー</dt><dd>${kcal === null ? "−" : Math.round(kcal) + " kcal"}</dd></div>
+    <div><dt>平均エクササイズ</dt><dd>${ex === null ? "−" : fmtMin(ex)}</dd></div>
+    <div><dt>運動日</dt><dd>${exDays} / ${v.length} 日</dd></div>
+    <div><dt>平均スタンド</dt><dd>${stand === null ? "−" : fmtMin(stand)}</dd></div>
+    <div><dt>平均安静時心拍</dt><dd>${rhr === null ? "−" : Math.round(rhr) + " bpm"}</dd></div>
+    <div><dt>平均心拍変動</dt><dd>${hrv === null ? "−" : Math.round(hrv) + " ms"}</dd></div>`;
+}
+
+function renderTable() {
+  const head = ["日付", "歩数", "kcal", "運動", "スタンド", "心拍", "HRV"];
+  const body = [...visibleRows()].reverse().map((r) => `<tr>
+    <td>${r.date}</td><td>${r.steps === "" ? "" : fmtInt(r.steps)}</td>
+    <td>${r.active_kcal}</td><td>${r.exercise_min && r.exercise_min + "分"}</td>
+    <td>${r.stand_min && r.stand_min + "分"}</td><td>${r.resting_hr}</td>
+    <td>${r.hrv_ms}</td></tr>`).join("");
+  document.getElementById("dataTable").innerHTML =
+    `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
+}
+
+// ---------- チャート ----------
+
+function baseOptions(scope) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false } }, // 各チャート単一系列。タイトルが系列名を兼ねる
+    scales: {
+      x: {
+        grid: { display: false },
+        border: { display: false },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: cssVar("--grid", scope) }, border: { display: false },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 } },
+      },
+    },
+  };
+}
+
+function barChart(canvasId, key, colorVar, tipFmt) {
+  const v = visibleRows();
+  const o = baseOptions();
+  o.plugins.tooltip = { callbacks: { label: (c) => ` ${tipFmt(c.parsed.y)}` } };
+  return new Chart(document.getElementById(canvasId), {
+    type: "bar",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [{
+        data: v.map((r) => (r[key] === "" ? null : Number(r[key]))),
+        backgroundColor: cssVar(colorVar),
+        borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
+      }],
+    },
+    options: o,
+  });
+}
+
+function renderCharts() {
+  charts.forEach((c) => c.destroy());
+  const v = visibleRows();
+  const calm = document.getElementById("calmBand"); // 常時ダークのバンド（心拍系チャートの配色スコープ）
+
+  charts = [
+    barChart("stepsChart", "steps", "--steps", (y) => `${fmtInt(y)} 歩`),
+    barChart("energyChart", "active_kcal", "--energy", (y) => `${y} kcal`),
+    barChart("exerciseChart", "exercise_min", "--exercise", (y) => fmtMin(y)),
+    barChart("standChart", "stand_min", "--stand", (y) => fmtMin(y)),
+  ];
+
+  // 安静時心拍のみ折れ線（水準の推移を読む指標のため）
+  const rhrColor = cssVar("--rhr", calm);
+  let o = baseOptions(calm);
+  o.scales.y.beginAtZero = false;
+  o.scales.y.suggestedMin = 40;
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 安静時心拍: ${c.parsed.y} bpm` } };
+  charts.push(new Chart(document.getElementById("rhrChart"), {
+    type: "line",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [{
+        data: v.map((r) => (r.resting_hr === "" ? null : Number(r.resting_hr))),
+        borderColor: rhrColor, backgroundColor: rhrColor + "26", // 線の下に淡い面フィル
+        fill: "start", pointBackgroundColor: rhrColor,
+        borderWidth: 2.5, pointRadius: 3, spanGaps: true, tension: 0.35,
+      }],
+    },
+    options: o,
+  }));
+
+  // HRV: 単日の生値はノイズが大きいため、7 日移動平均（暦日ベースの遡り窓）を
+  // 主役の線にし、日次中央値は同色の薄い点として添える
+  const dayMs = 86400000;
+  const toMs = (d) => { const [y, mo, da] = d.split("-").map(Number); return Date.UTC(y, mo - 1, da); };
+  const hrvAll = rows.filter((r) => r.hrv_ms !== "").map((r) => ({ t: toMs(r.date), v: Number(r.hrv_ms) }));
+  const ma7 = (d) => {
+    const t = toMs(d);
+    const w = hrvAll.filter((p) => p.t <= t && p.t > t - 7 * dayMs);
+    return w.length ? w.reduce((s, p) => s + p.v, 0) / w.length : null;
+  };
+  const hrvColor = cssVar("--hrv", calm);
+  o = baseOptions(calm);
+  o.scales.y.beginAtZero = false;
+  o.plugins.tooltip = { callbacks: { label: (c) => c.datasetIndex === 0
+    ? ` 7日平均: ${c.parsed.y.toFixed(1)} ms`
+    : ` 日次中央値: ${c.parsed.y} ms` } };
+  charts.push(new Chart(document.getElementById("hrvChart"), {
+    type: "line",
+    data: {
+      labels: v.map((r) => fmtDateShort(r.date)),
+      datasets: [
+        { data: v.map((r) => ma7(r.date)),
+          borderColor: hrvColor, backgroundColor: hrvColor + "1f", // 線の下に淡い面フィル
+          fill: "start",
+          borderWidth: 2.5, pointRadius: 0, spanGaps: true, tension: 0.3 },
+        { data: v.map((r) => (r.hrv_ms === "" ? null : Number(r.hrv_ms))),
+          showLine: false, pointRadius: 3,
+          borderColor: "transparent", backgroundColor: hrvColor + "66" },
+      ],
+    },
+    options: o,
+  }));
+}
+
+function renderAll() {
+  renderDay();
+  renderCharts();
+  renderAvgs();
+  renderTable();
+}
+
+// ---------- スクロールリビール ----------
+
+let revealDone = false;
+function setupReveal() {
+  if (revealDone || !("IntersectionObserver" in window)) return;
+  revealDone = true;
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+    }
+  }, { threshold: 0.05 });
+  document.querySelectorAll("#content .head, #content .lead, #content .card, #content details")
+    .forEach((el) => {
+      el.classList.add("reveal");
+      io.observe(el);
+    });
+}
+
+// ---------- スクロール駆動ステージ（sticky ピンの中でグラフを切り替える） ----------
+
+let stagesDone = false;
+function setupStages() {
+  if (stagesDone) return;
+  const groups = document.querySelectorAll(".stagegroup");
+  if (!groups.length) return;
+  stagesDone = true;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  groups.forEach((g) => {
+    g.classList.add("js");
+    const panels = [...g.querySelectorAll(".stagepanel")];
+    const tabs = [...g.querySelectorAll(".stagetabs button")];
+    let current = -1;
+    const setStage = (i) => {
+      if (i === current) return;
+      current = i;
+      panels.forEach((p, j) => {
+        p.classList.toggle("active", j === i);
+        p.classList.toggle("passed", j < i);
+      });
+      tabs.forEach((b, j) => b.setAttribute("aria-selected", String(j === i)));
+    };
+    // ピン区間のスクロール進捗をステージ番号に写像する
+    const onScroll = () => {
+      const rect = g.getBoundingClientRect();
+      const span = rect.height - window.innerHeight;
+      const p = span > 0 ? Math.min(1, Math.max(0, -rect.top / span)) : 1;
+      setStage(Math.min(panels.length - 1, Math.floor(p * panels.length)));
+    };
+    tabs.forEach((b, i) => b.addEventListener("click", () => {
+      const span = g.offsetHeight - window.innerHeight;
+      const top = window.scrollY + g.getBoundingClientRect().top;
+      window.scrollTo({ top: top + (span * (i + 0.5)) / panels.length,
+                        behavior: reduce.matches ? "auto" : "smooth" });
+    }));
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  });
+}
+
+// ---------- 操作 ----------
+
+document.getElementById("prevDay").addEventListener("click", () => {
+  if (selIdx > 0) { selIdx--; renderDay(); }
+});
+document.getElementById("nextDay").addEventListener("click", () => {
+  if (selIdx < rows.length - 1) { selIdx++; renderDay(); }
+});
+// スワイプで日を切り替え（左スワイプ = 翌日、右スワイプ = 前日）
+let touchX = null;
+const dayCard = document.getElementById("dayCard");
+dayCard.addEventListener("touchstart", (e) => { touchX = e.changedTouches[0].clientX; }, { passive: true });
+dayCard.addEventListener("touchend", (e) => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  touchX = null;
+  if (Math.abs(dx) < 40) return;
+  if (dx < 0 && selIdx < rows.length - 1) { selIdx++; renderDay(); }
+  else if (dx > 0 && selIdx > 0) { selIdx--; renderDay(); }
+}, { passive: true });
+
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    rangeDays = Number(btn.dataset.days);
+    document.querySelectorAll(".filters button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    renderCharts();
+    renderAvgs();
+    renderTable();
+  });
+});
+
+// OS のライト/ダーク切替に追従して再描画（色は CSS 変数から再取得）
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (rows.length) { renderCharts(); renderDay(); }
+});
+
+// ---------- 共有パスワード（暗号化 PAT） ----------
+// 共有専用の読み取り PAT をパスワード由来鍵（PBKDF2-SHA256）+ AES-GCM で暗号化した
+// JSON を assets/shared-token.json に置く。公開ブロブのためパスワードは長いパスフレーズ必須。
+
+const SHARED_URL = "assets/shared-token.json";
+// ?owner=1 のときだけ PAT 設定・共有トークン作成 UI を出す（表示整理であって秘匿ではない）
+const IS_OWNER = new URLSearchParams(location.search).get("owner") === "1";
+let sharedBlob = null;
+
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function deriveKey(password, salt, iterations) {
+  const km = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" }, km,
+    { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function encryptToken(pat, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iterations = 600000;
+  const key = await deriveKey(password, salt, iterations);
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv }, key, new TextEncoder().encode(pat));
+  return { v: 1, kdf: "PBKDF2-SHA256", iterations, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+
+async function decryptToken(blob, password) {
+  const key = await deriveKey(password, unb64(blob.salt), blob.iterations);
+  const pt = await crypto.subtle.decrypt(  // GCM が改ざん/誤パスワードを検知して throw する
+    { name: "AES-GCM", iv: unb64(blob.iv) }, key, unb64(blob.ct));
+  return new TextDecoder().decode(pt);
+}
+
+const sharedFetch = fetch(SHARED_URL, { cache: "no-cache" })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j) => { sharedBlob = j; })
+  .catch(() => {});
+
+// ---------- データ取得 ----------
+
+const noticeEl = document.getElementById("notice");
+const authEl = document.getElementById("auth");
+
+function showAuth(message) {
+  noticeEl.textContent = message || "";
+  noticeEl.hidden = !message;
+  authEl.hidden = false;
+  document.getElementById("content").hidden = true;
+  sharedFetch.then(() => {
+    document.getElementById("pwBlock").hidden = !sharedBlob;
+    const patBlock = document.getElementById("patBlock");
+    patBlock.hidden = !!sharedBlob && !IS_OWNER; // 共有設定済みなら所有者のみ表示
+    if (!sharedBlob) patBlock.open = true;
+  });
+}
+
+async function fetchCsv(url, token) {
+  const res = await fetch(url, {
+    cache: "no-cache",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github.raw+json",
+    },
+  });
+  if (res.status === 404) return null;
+  if (res.status === 401) throw Object.assign(new Error("unauthorized"), { auth: true });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseCsv(await res.text());
+}
+
+async function load() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) { showAuth(""); return; }
+  authEl.hidden = true;
+  noticeEl.hidden = false;
+  noticeEl.textContent = "読み込み中…";
+  try {
+    const [metrics, log] = await Promise.all([
+      fetchCsv(METRICS_API, token),
+      fetchCsv(LOG_API, token),
+    ]);
+    rows = buildRows(metrics, log);
+    if (!rows.length) {
+      noticeEl.textContent =
+        "データがまだありません。ショートカットからの初回送信後に表示されます（docs/ops/ios-shortcut-health-metrics-log.md）。";
+      return;
+    }
+    selIdx = rows.length - 1;
+    noticeEl.hidden = true;
+    document.getElementById("content").hidden = false;
+    renderAll();
+    setupReveal();
+    setupStages();
+  } catch (e) {
+    if (e.auth) {
+      localStorage.removeItem(TOKEN_KEY);
+      showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
+      return;
+    }
+    noticeEl.textContent = `読み込みに失敗しました: ${e.message}`;
+  }
+}
+
+document.getElementById("saveToken").addEventListener("click", () => {
+  const t = document.getElementById("tokenInput").value.trim();
+  if (!t) return;
+  localStorage.setItem(TOKEN_KEY, t);
+  document.getElementById("tokenInput").value = "";
+  load();
+});
+
+document.getElementById("pwSubmit").addEventListener("click", async () => {
+  const pw = document.getElementById("pwInput").value;
+  const err = document.getElementById("pwError");
+  if (!pw || !sharedBlob) return;
+  err.hidden = true;
+  try {
+    const pat = await decryptToken(sharedBlob, pw);
+    localStorage.setItem(TOKEN_KEY, pat);
+    document.getElementById("pwInput").value = "";
+    load();
+  } catch {
+    err.hidden = false;
+  }
+});
+
+// 所有者向け: 共有用の暗号化 JSON を生成（PAT はブラウザ外に出ない）
+document.getElementById("mkShared").addEventListener("click", async () => {
+  const out = document.getElementById("mkOut");
+  const pat = document.getElementById("mkPat").value.trim() || localStorage.getItem(TOKEN_KEY);
+  const pw = document.getElementById("mkPw").value;
+  if (!pat) { out.value = "先に PAT を入力するか、この端末で PAT を設定してください。"; return; }
+  if (pw.length < 12) { out.value = "パスワードは 12 文字以上にしてください（ランダムな単語 4 つ以上を推奨）。"; return; }
+  out.value = JSON.stringify(await encryptToken(pat, pw));
+});
+
+document.getElementById("changeToken").addEventListener("click", (e) => {
+  e.preventDefault();
+  showAuth("新しいトークンまたは共有パスワードを入力してください。");
+});
+
+load();
+</script>
+</body>
+</html>

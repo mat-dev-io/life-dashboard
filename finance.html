@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icon/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LIFE">
+<meta property="og:title" content="LIFE — 資産ダッシュボード">
+<meta property="og:description" content="資産の配分と推移、そして毎月の収支。">
+<meta property="og:url" content="https://mat-dev-io.github.io/life-dashboard/finance.html">
+<meta property="og:image" content="https://mat-dev-io.github.io/life-dashboard/assets/og/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<title>資産 | LIFE</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #fbfbfd;
+    --page-alt:    #f5f5f7;
+    --surface:     #ffffff;
+    --text:        #1d1d1f;
+    --text-2:      #6e6e73;
+    --text-3:      #86868b;
+    --sep:         rgba(0,0,0,0.08);
+    --glass:       rgba(251,251,253,0.72);
+    --fill:        rgba(120,120,128,0.12);
+    --accent:      #0071e3;
+    --seg-active:  #ffffff;
+    --seg-shadow:  0 2px 6px rgba(0,0,0,0.12);
+    --card-shadow: 0 2px 14px rgba(0,0,0,0.05);
+    --grad-a:      #2a78d6;
+    --grad-b:      #4a3aa7;
+    --grid:        #e8e8ed;
+    --baseline:    #d2d2d7;
+    /* チャート配色（dataviz 検証済み。変更時は validate_palette.js で再検証すること） */
+    --steps:       #2a78d6;  /* categorical slot 1 */
+    --energy:      #eda100;  /* slot 4 */
+    --exercise:    #1baf7a;  /* slot 5 */
+    --stand:       #4a3aa7;  /* slot 7 */
+    --rhr:         #e87ba4;  /* slot 3 */
+    --hrv:         #008300;  /* slot 2 */
+    --good:        #006300;
+    --bad:         #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:        #000000;
+      --page-alt:    #161617;
+      --surface:     #1c1c1e;
+      --text:        #f5f5f7;
+      --text-2:      #a1a1a6;
+      --text-3:      #86868b;
+      --sep:         rgba(255,255,255,0.14);
+      --glass:       rgba(0,0,0,0.65);
+      --fill:        rgba(120,120,128,0.24);
+      --accent:      #0a84ff;
+      --seg-active:  #636366;
+      --seg-shadow:  none;
+      --card-shadow: none;
+      --grad-a:      #3987e5;
+      --grad-b:      #9085e9;
+      --grid:        #2c2c2e;
+      --baseline:    #3a3a3c;
+      --steps:       #3987e5;
+      --energy:      #c98500;
+      --exercise:    #199e70;
+      --stand:       #9085e9;
+      --rhr:         #d55181;
+      --hrv:         #0ca30c;
+      --good:        #0ca30c;
+      --bad:         #e66767;
+    }
+  }
+  /* 常時ダークのバンド。中のチャートはこのスコープの変数（ダーク検証済み配色）を読む */
+  .band-dark {
+    --page:        #000000;
+    --surface:     #1c1c1e;
+    --text:        #f5f5f7;
+    --text-2:      #a1a1a6;
+    --text-3:      #86868b;
+    --sep:         rgba(255,255,255,0.14);
+    --fill:        rgba(120,120,128,0.24);
+    --seg-active:  #636366;
+    --seg-shadow:  none;
+    --card-shadow: none;
+    --grid:        #2c2c2e;
+    --baseline:    #3a3a3c;
+    --steps:       #3987e5;
+    --energy:      #c98500;
+    --exercise:    #199e70;
+    --stand:       #9085e9;
+    --rhr:         #d55181;
+    --hrv:         #0ca30c;
+    background: #000;
+    color: var(--text);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* すりガラスのトップバー */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
+  .topbar-inner {
+    max-width: 720px; margin-inline: auto;
+    display: flex; align-items: center; gap: 20px;
+    height: 44px; padding: 0 16px;
+  }
+  .brand { font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; }
+  .topnav { margin-left: auto; display: flex; gap: 18px; font-size: 0.85rem; }
+  .topnav a { color: var(--text-2); text-decoration: none; }
+  .topnav a[aria-current="page"] { color: var(--text); font-weight: 600; }
+
+  .narrow { max-width: 720px; margin-inline: auto; padding: 24px 16px; }
+
+  /* フルスクリーンヒーロー: 背景画像に合わせて常時ダーク（配下の変数をダーク用に上書き） */
+  .hero-section {
+    --text: #f5f5f7;
+    --text-2: rgba(255,255,255,0.78);
+    --text-3: rgba(255,255,255,0.6);
+    --fill: rgba(255,255,255,0.16);
+    --grad-a: #3987e5;
+    --grad-b: #9085e9;
+    position: relative;
+    min-height: max(560px, 92svh);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 48px 16px 72px;
+    overflow: hidden;
+    background: #0e1226 url("assets/hero/finance-hero.webp") center / cover no-repeat;
+    color: var(--text);
+  }
+  /* 可読性のための減光 + 下端をページ背景へ溶かす */
+  .hero-section::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom,
+      rgba(6,8,20,0.30), rgba(6,8,20,0.10) 40%, rgba(6,8,20,0.35) 78%, var(--page) 100%);
+  }
+  .hero-section > * { position: relative; }
+  .eyebrow {
+    font-size: 0.8rem; font-weight: 600; color: var(--text-3);
+    letter-spacing: 0.14em; margin: 0 0 12px;
+  }
+  .tagline {
+    font-size: clamp(2.3rem, 11vw, 3.4rem);
+    font-weight: 800; letter-spacing: -0.03em; line-height: 1.12;
+    margin: 0 0 22px;
+  }
+  .daynav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 6px; }
+  .daynav h2 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-2); min-width: 11em; }
+  .daynav button {
+    width: 32px; height: 32px; border: 0; border-radius: 50%;
+    background: var(--fill); color: var(--text);
+    font-size: 1.05rem; line-height: 1; cursor: pointer;
+  }
+  .daynav button:disabled { opacity: 0.3; cursor: default; }
+
+  .hero-label { font-size: 0.8rem; color: var(--text-3); }
+  .hero-value {
+    font-size: clamp(3rem, 16vw, 4.4rem);
+    font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(90deg, var(--grad-a), var(--grad-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-value small { font-size: 0.42em; font-weight: 700; }
+
+  .scrollcue {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: var(--text-3); font-size: 1.5rem; line-height: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .scrollcue { animation: cue 2.2s ease-in-out infinite; }
+    @keyframes cue {
+      0%, 100% { transform: translate(-50%, 0); opacity: 0.9; }
+      50%      { transform: translate(-50%, 8px); opacity: 0.4; }
+    }
+  }
+
+  /* 章（チャンク化）: 大見出しの断定コピー + リード + コンテンツ */
+  .chapter { padding: 64px 16px; }
+  .chapter.alt { background: var(--page-alt); }
+  .band-dark.chapter { border-block: 1px solid rgba(255,255,255,0.08); }
+  .chapter-inner { max-width: 720px; margin-inline: auto; }
+  .head {
+    font-size: clamp(1.9rem, 9vw, 2.7rem);
+    font-weight: 800; letter-spacing: -0.025em; line-height: 1.15;
+    margin: 0 0 10px; text-align: center;
+  }
+  /* 見出しはフレーズ単位でのみ折り返す（1 文字だけの改行を防ぐ） */
+  .head span, .tagline span { display: inline-block; }
+  .lead {
+    color: var(--text-2); font-size: 1rem; line-height: 1.6;
+    margin: 0 0 28px; text-align: center;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--card-shadow);
+  }
+  .card h3 {
+    font-size: 0.95rem; font-weight: 600; margin: 0 0 2px;
+    color: var(--text); letter-spacing: -0.01em;
+  }
+  .caption { font-size: 0.75rem; color: var(--text-3); margin: 0 0 10px; }
+  .chart-wrap { position: relative; height: 170px; }
+
+  .statgrid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .stat { padding: 10px 12px; }
+  .stat:not(:nth-child(3n+1)) { border-left: 1px solid var(--sep); }
+  .stat:nth-child(n+4) { border-top: 1px solid var(--sep); }
+  .stat .label { font-size: 0.7rem; color: var(--text-3); }
+  .stat .value {
+    font-size: 0.95rem; font-weight: 600; margin-top: 2px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .stat .value small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); }
+
+  /* 期間フィルタ: トップバー下に張り付く iOS 風セグメンテッドコントロール */
+  .filterbar {
+    position: sticky; top: 45px; z-index: 9;
+    padding: 8px 16px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--sep);
+  }
+  .filters {
+    display: flex; background: var(--fill); border-radius: 10px;
+    padding: 2px; max-width: 400px; margin-inline: auto;
+  }
+  .filters button {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    font-size: 0.85rem; font-weight: 500; padding: 7px 0;
+    border-radius: 8px; cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] {
+    background: var(--seg-active); box-shadow: var(--seg-shadow); font-weight: 600;
+  }
+
+  .avgs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; font-size: 0.85rem; }
+  .avgs dt { color: var(--text-3); font-size: 0.7rem; }
+  .avgs dd { margin: 0 0 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  details { margin: 4px 0 8px; }
+  summary { color: var(--accent); font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 6px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.75rem; white-space: nowrap; width: 100%; }
+  th, td { padding: 5px 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--baseline); }
+  td { border-bottom: 1px solid var(--sep); }
+  th:first-child, td:first-child { text-align: left; }
+
+  .notice { color: var(--text-2); padding: 32px 8px; text-align: center; }
+
+  /* 初回のアクセス設定（共有パスワード / PAT） */
+  .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
+  .auth input {
+    width: 100%; padding: 11px 12px; font-size: 1rem;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text); margin-bottom: 10px;
+  }
+  .auth button {
+    width: 100%; padding: 11px; border: 0; border-radius: 980px;
+    background: var(--accent); color: #fff;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  }
+  .auth .err { color: var(--bad); font-size: 0.85rem; }
+  .auth details { margin-top: 8px; }
+  .auth textarea {
+    width: 100%; padding: 8px; margin-top: 10px;
+    font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid var(--sep); border-radius: 12px;
+    background: var(--page); color: var(--text);
+  }
+  .ownertool { border-top: 1px solid var(--sep); margin-top: 16px; padding-top: 12px; }
+
+  .foot {
+    max-width: 720px; margin-inline: auto;
+    color: var(--text-3); font-size: 0.75rem; line-height: 1.8;
+    text-align: center; padding: 32px 16px 48px;
+  }
+  .foot a { color: var(--text-3); }
+
+  /* スクロール駆動ステージ: sticky ピンの中でグラフを 1 枚ずつ切り替える */
+  .stagechapter { padding: 64px 0 0; }
+  .stagechapter .chapter-inner { padding: 0 16px; }
+  .stagegroup { position: relative; }
+  .stagegroup.js { height: calc(var(--stages) * 100svh); }
+  .stagegroup.js .stagepin { position: sticky; top: 0; height: 100svh; }
+  .stagepin {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 104px 16px 24px;
+  }
+  .stagetabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 0 0 18px; }
+  .stagetabs button {
+    border: 1px solid var(--sep); background: transparent; color: var(--text-2);
+    border-radius: 980px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+  }
+  .stagetabs button[aria-selected="true"] {
+    background: var(--text); border-color: var(--text); color: var(--page);
+  }
+  .stagepanels { position: relative; width: 100%; max-width: 720px; margin-inline: auto; }
+  .stagegroup.js .stagepanels { flex: 1 1 auto; min-height: 0; }
+  .stagepanel { display: flex; flex-direction: column; gap: 10px; }
+  .stagepanel[hidden] { display: none; }
+  .stagegroup:not(.js) .stagepanel { margin-bottom: 48px; }
+  .stagegroup.js .stagepanel {
+    position: absolute; inset: 0;
+    opacity: 0; visibility: hidden; transform: translateY(28px);
+  }
+  .stagegroup.js .stagepanel.active { opacity: 1; visibility: visible; transform: none; }
+  .stagegroup.js .stagepanel.passed { transform: translateY(-28px); }
+  .stagedesc h3 {
+    text-align: center; font-size: 1.05rem; font-weight: 700;
+    letter-spacing: -0.01em; margin: 0 0 2px; color: var(--text);
+  }
+  .stagedesc .caption { text-align: center; }
+  .stagedesc .desc {
+    font-size: 0.85rem; color: var(--text-2); line-height: 1.7; margin: 6px 0 0;
+  }
+  .stagefig { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .stagefig .chart-wrap { flex: 1 1 auto; height: auto; min-height: 200px; }
+  /* 広い画面では左にグラフ・右に説明（マークアップは説明が先 = row-reverse で右へ） */
+  @media (min-width: 640px) {
+    .stagepanel { flex-direction: row-reverse; align-items: center; gap: 36px; }
+    .stagefig { flex: 1 1 58%; align-self: stretch; min-width: 0; }
+    .stagedesc { flex: 1 1 42%; }
+    .stagedesc h3, .stagedesc .caption { text-align: left; }
+    .stagedesc h3 { font-size: 1.35rem; }
+    .stagedesc .desc { font-size: 0.95rem; }
+  }
+
+  /* スクロールで現れる要素（モーション設定を尊重） */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(18px);
+              transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    .lead.reveal { transition-delay: 0.08s; }
+    .stagegroup.js .stagepanel {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+    }
+    .stagegroup.js .stagepanel.active {
+      transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s;
+    }
+  }
+
+  /* 資産ページ: FIRE 進捗バー */
+  .fire-pct { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .fire-pct small { font-size: 0.4em; font-weight: 600; margin-left: 2px; }
+  .fire-bar {
+    height: 10px; border-radius: 999px; background: var(--fill);
+    overflow: hidden; margin: 14px 0 10px;
+  }
+  .fire-bar > span {
+    display: block; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--hrv), var(--accent));
+  }
+  .fire-note { font-size: 0.78rem; color: var(--text-3); margin-top: 8px; }
+
+  /* 資産ページ: 増減・達成の色分けと、ヒーロー下の補足 */
+  .hero-sub { margin-top: 10px; font-size: 0.85rem; color: var(--text-3); }
+  .good { color: var(--good); }
+  .bad  { color: var(--bad); }
+  .avgs .good, .avgs .bad { font-size: 0.72rem; margin-left: 6px; }
+  #subsTable tfoot th { border-top: 1px solid var(--sep); font-weight: 600; text-align: left; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">LIFE</span>
+    <nav class="topnav">
+      <a href="index.html">睡眠</a>
+      <a href="activity.html">アクティビティ</a>
+      <a href="screen.html">スクリーン</a>
+      <a href="finance.html" aria-current="page">資産</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="narrow">
+    <div id="auth" class="card auth" hidden>
+      <h3>アクセス設定（初回のみ）</h3>
+      <details id="patBlock" open>
+        <summary>PAT を設定する</summary>
+        <p>
+          このページは資産情報を扱うため、<strong>共有パスワードでは開けません</strong>。
+          所有者の端末に保存した Fine-grained PAT でのみ表示されます。
+          発行: GitHub → Settings → Developer settings → Fine-grained personal access tokens。
+          Repository access は <strong>mat-dev-io/LIFE のみ</strong>、Permissions は
+          <strong>Contents: Read-only のみ</strong>にしてください。
+          トークンは localStorage に保存され、GitHub API 以外へは送信されません。
+        </p>
+        <input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off">
+        <button id="saveToken">保存して表示</button>
+      </details>
+    </div>
+    <div id="notice" class="notice">読み込み中…</div>
+  </div>
+
+  <div id="content" hidden>
+
+    <!-- ヒーロー: 総資産を一つの数字で語る -->
+    <section class="hero-section" id="dayCard">
+      <p class="eyebrow">資産</p>
+      <h1 class="tagline"><span>時間を、</span><span>買い戻す。</span></h1>
+      <div class="daynav">
+        <h2 id="dayTitle"></h2>
+      </div>
+      <div id="tiles"></div>
+      <div class="scrollcue" aria-hidden="true">⌄</div>
+    </section>
+
+    <!-- いまのバンド: 資産の内訳（常時ダーク） -->
+    <section class="chapter band-dark" id="todayBand">
+      <div class="chapter-inner">
+        <h2 class="head"><span>いま、</span><span>どこまで来たか。</span></h2>
+        <p class="lead">自由までの距離を、数字で。</p>
+        <div class="card"><div id="fireCard"></div></div>
+        <div class="card"><div id="dayStats"></div></div>
+      </div>
+    </section>
+
+    <!-- 推移: 進捗のすぐ下。総資産と見通し／内訳の 2 ステージ -->
+    <section class="chapter stagechapter">
+      <div class="chapter-inner">
+        <h2 class="head">近づいているか。</h2>
+        <p class="lead">積み上がる速さだけが、期日を前倒しする。</p>
+      </div>
+      <div class="stagegroup" style="--stages:2">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">総資産と見通し</button>
+            <button aria-selected="false">内訳</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>総資産の推移</h3>
+                <p class="caption">点線は今の積立が続いた場合の見通し</p>
+                <p class="desc">実績の先に、必要資産へ届くまでの一本を引いています。相場でも収入でも動く目安です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="assetChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>資産クラス別の推移</h3>
+                <p class="caption">積み上げ。合計が総資産</p>
+                <p class="desc">どの資産が積み上がってきたか。現金だけが増えている時期は、投資に回せていない合図です。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="breakdownChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="chapter-inner">
+        <div class="card"><p id="assetNote" class="caption"></p></div>
+      </div>
+    </section>
+
+    <!-- 配分: スクロール駆動ステージ -->
+    <section class="chapter alt stagechapter">
+      <div class="chapter-inner">
+        <h2 class="head"><span>どこに、</span><span>置いているか。</span></h2>
+        <p class="lead">働かずに増える分を、どこに預けるか。</p>
+      </div>
+      <div class="stagegroup" style="--stages:2">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">構成比</button>
+            <button aria-selected="false">目標との差</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>資産配分</h3>
+                <p class="caption">評価額に対する構成比</p>
+                <p class="desc">働かずに増える分は、置き場所で決まります。偏りは一目で分かります。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="allocChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>目標との差</h3>
+                <p class="caption">ゼロ線より上が買増、下が売却</p>
+                <p class="desc">目標配分に戻すための調整額。相場で勝手にずれるので、比率で見ます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="rebalChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 支出（常時ダーク）: スクロール駆動ステージ -->
+    <section class="chapter band-dark stagechapter" id="spendBand">
+      <div class="chapter-inner">
+        <h2 class="head"><span>使う額が、</span><span>期日を決める。</span></h2>
+        <p class="lead">必要な資産は、年間支出の 25 倍。</p>
+      </div>
+      <div class="stagegroup" style="--stages:2">
+        <div class="stagepin">
+          <div class="stagetabs" role="tablist" aria-label="グラフ切替">
+            <button aria-selected="true">収支</button>
+            <button aria-selected="false">支出</button>
+          </div>
+          <div class="stagepanels">
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>月次収支</h3>
+                <p class="caption">収入 − 支出。自由に近づく速さ</p>
+                <p class="desc">ここが積み上がる速さそのもの。単月ではなく、並びの形で読みます。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="netChart"></canvas></div>
+              </div>
+            </div>
+            <div class="stagepanel">
+              <div class="stagedesc">
+                <h3>月間支出</h3>
+                <p class="caption">線 = 期間平均</p>
+                <p class="desc">支出はゴールの位置を決めます。月 1 万円減らせば、必要な資産は 300 万円下がります。</p>
+              </div>
+              <div class="stagefig">
+                <div class="chart-wrap"><canvas id="expenseChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 守り -->
+    <section class="chapter alt">
+      <div class="chapter-inner">
+        <h2 class="head"><span>途中で、</span><span>降りないために。</span></h2>
+        <p class="lead">生活防衛資金と、毎月出ていく固定費。</p>
+        <div class="card">
+          <h3>生活防衛資金</h3>
+          <p class="caption">（現金 − 負債）÷ 平均月間支出</p>
+          <dl class="avgs" id="avgs"></dl>
+        </div>
+        <div class="card">
+          <h3>定期課金</h3>
+          <p class="caption">同額・同日で繰り返している支出</p>
+          <div class="table-wrap"><table id="subsTable"></table></div>
+        </div>
+        <details>
+          <summary>資産クラスの明細</summary>
+          <div class="table-wrap"><table id="allocTable"></table></div>
+        </details>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="foot">
+  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/finance/dashboard.json">LIFE/data/finance/dashboard.json</a>
+  ほか（週次運用時に更新）<br>
+  <a href="#" id="changeToken">トークンを変更</a>
+</footer>
+
+<script>
+"use strict";
+// private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
+const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/finance/";
+const DASH_API = API_BASE + "dashboard.json?ref=main";
+const HISTORY_API = API_BASE + "history.jsonl?ref=main";
+const TOKEN_KEY = "life_dashboard_pat"; // 他ページと共用
+
+// 資産ページは共有パスワードで開けない（睡眠は共有してよくても資産は別）
+const SHARED_DISABLED = true;
+
+Chart.defaults.font.family =
+  '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
+
+let dash = null;       // dashboard.json
+let history = [];      // history.jsonl を日付昇順に並べたもの
+let charts = [];
+
+const EXPENSE_MONTHS = 24;   // 支出・収支グラフに出す月数
+
+// 第2引数でスコープ要素を指定すると、その要素に効いている CSS 変数を読む
+// （常時ダークの .band-dark 内のチャートは、ダーク検証済み配色を拾うため必須）
+const cssVar = (name, el = document.documentElement) =>
+  getComputedStyle(el).getPropertyValue(name).trim();
+
+const fmtInt = (n) => Number(Math.round(n)).toLocaleString("ja-JP");
+const fmtYen = (n) => `${fmtInt(n)}円`;
+// 桁が大きい金額は万・億に丸める（軸ラベルとタイルで使う）
+const fmtShortYen = (n) => {
+  const a = Math.abs(n);
+  if (a >= 1e8) return `${(n / 1e8).toFixed(2)}億円`;
+  if (a >= 1e4) return `${fmtInt(n / 1e4)}万円`;
+  return fmtYen(n);
+};
+const fmtPct = (r, digits = 1) =>
+  r === null || r === undefined ? "−" : `${(r * 100).toFixed(digits)}%`;
+const fmtSignedPct = (r) =>
+  r === null || r === undefined ? "−" : `${r >= 0 ? "+" : ""}${(r * 100).toFixed(1)}%`;
+// YYYY/MM → 表示用の 'YY/MM
+const fmtMonth = (m) => m.replace(/^\d{2}(\d{2})\//, "$1/");
+
+// 資産クラスごとの色。dataviz 検証済みのカテゴリカルパレットから割り当てる
+const CLASS_COLOR = {
+  jp_stock: "--steps",
+  us_stock: "--hrv",
+  fund: "--stand",
+  crypto: "--energy",
+  cash: "--rhr",
+};
+
+// ---------- ヒーロー ----------
+
+const stat = (label, value, unit) => `
+  <div class="stat"><div class="label">${label}</div>
+    <div class="value">${value === "" ? "−" : value}${value === "" || !unit ? "" : `<small> ${unit}</small>`}</div></div>`;
+
+// 初回表示だけ数字をカウントアップさせる（reduced-motion と非対応環境では即時表示）
+let heroAnimated = false;
+function setHeroValue(target) {
+  const el = document.getElementById("heroNum");
+  if (heroAnimated || typeof requestAnimationFrame === "undefined"
+      || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.innerHTML = fmtInt(target);
+    return;
+  }
+  heroAnimated = true;
+  const t0 = Date.now(), dur = 900;
+  const tick = () => {
+    const p = Math.min(1, (Date.now() - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.innerHTML = fmtInt(Math.round(target * ease));
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function renderHero() {
+  const s = dash.summary;
+  document.getElementById("dayTitle").textContent = `${dash.date} 時点`;
+  document.getElementById("tiles").innerHTML = `
+    <div class="hero-label">総資産</div>
+    <div class="hero-value"><span id="heroNum"></span><small> 円</small></div>
+    <p class="hero-sub">評価損益 ${fmtSignedPct(s.pnl_ratio)}／時価取得 ${s.priced_count}/${s.total_count} 銘柄</p>`;
+  setHeroValue(s.total);
+}
+
+function renderStats() {
+  const s = dash.summary;
+  document.getElementById("dayStats").innerHTML = `
+    <div class="statgrid">
+      ${stat("純資産", fmtShortYen(s.net_worth))}
+      ${stat("有価証券", fmtShortYen(s.securities_value))}
+      ${stat("現金・預金", fmtShortYen(s.cash))}
+      ${stat("負債", fmtShortYen(s.liabilities))}
+      ${stat("評価損益", fmtShortYen(s.pnl))}
+      ${stat("取得原価", fmtShortYen(s.cost))}
+    </div>`;
+}
+
+// ---------- FIRE 進捗 ----------
+
+function renderFire() {
+  const f = dash.fire;
+  const el = document.getElementById("fireCard");
+  if (!f) {
+    el.innerHTML = '<p class="caption">家計簿データが無いため、必要資産を算出できません。</p>';
+    return;
+  }
+  const pct = Math.min(1, f.progress);   // 100% を超えてもバーは振り切らせない
+  const years = f.years_to_target;
+  const eta = years === null
+    ? "現在の積立額では到達年を試算できません"
+    : years === 0
+      ? "必要資産に到達しています"
+      : `到達の目安 約 ${years.toFixed(1)} 年`;
+  el.innerHTML = `
+    <div class="fire-pct">${(f.progress * 100).toFixed(1)}<small>%</small></div>
+    <div class="fire-bar"><span style="width:${(pct * 100).toFixed(1)}%"></span></div>
+    <div class="statgrid">
+      ${stat("必要資産", fmtShortYen(f.target_assets))}
+      ${stat("残り", fmtShortYen(f.remaining))}
+      ${stat("年間支出", fmtShortYen(f.annual_expense))}
+    </div>
+    <p class="fire-note">${eta}（年 ${fmtShortYen(f.annual_investment)} を利回り
+      ${fmtPct(f.expected_return, 0)} で積み立てた場合の試算）。
+      必要資産は年間支出の ${Math.round(1 / f.withdrawal_rate)} 倍。
+      月 1 万円減らすと ${fmtShortYen(f.target_delta_per_10k_monthly)} 下がります。</p>`;
+}
+
+// ---------- 守り（生活防衛資金・定期課金・配分明細） ----------
+
+function renderAvgs() {
+  const cf = dash.cashflow;
+  const el = document.getElementById("avgs");
+  if (!cf) { el.innerHTML = "<dt>家計簿データがありません</dt><dd>−</dd>"; return; }
+  const months = cf.emergency_fund_months;
+  const ok = months >= cf.emergency_target_months;
+  el.innerHTML = `
+    <dt>手元でしのげる期間</dt>
+    <dd>${months.toFixed(1)}<small> か月分</small>
+      <span class="${ok ? "good" : "bad"}">${ok ? "目標達成" : "目標未達"}</span></dd>
+    <dt>目標</dt><dd>${cf.emergency_target_months}<small> か月分</small></dd>
+    <dt>平均月間支出</dt><dd>${fmtShortYen(cf.avg_expense)}<small> / 直近${cf.avg_months}か月</small></dd>
+    <dt>平均月次収支</dt><dd>${fmtShortYen(cf.avg_net)}<small> / 月</small></dd>`;
+}
+
+function renderSubs() {
+  const subs = dash.subscriptions || [];
+  const t = document.getElementById("subsTable");
+  if (!subs.length) { t.innerHTML = "<tr><td>検出された定期課金はありません</td></tr>"; return; }
+  const total = subs.reduce((a, s) => a + s.monthly_equivalent, 0);
+  t.innerHTML =
+    "<thead><tr><th>サービス</th><th>金額</th><th>周期</th><th>引落日</th></tr></thead><tbody>"
+    + subs.map((s) => `<tr>
+        <td>${s.name.slice(0, 24)}</td>
+        <td>${fmtYen(s.amount)}</td>
+        <td>${s.interval === "yearly" ? "年次" : "月次"}</td>
+        <td>${s.day}日</td></tr>`).join("")
+    + `</tbody><tfoot><tr><th>月額換算</th><th>${fmtYen(total)}</th><th colspan="2"></th></tr></tfoot>`;
+}
+
+function renderAllocTable() {
+  const rows = dash.allocation || [];
+  document.getElementById("allocTable").innerHTML =
+    "<thead><tr><th>資産クラス</th><th>評価額</th><th>構成比</th><th>目標</th><th>調整</th></tr></thead><tbody>"
+    + rows.map((r) => `<tr>
+        <td>${r.label}</td>
+        <td>${fmtShortYen(r.value)}</td>
+        <td>${fmtPct(r.ratio)}</td>
+        <td>${r.target_ratio === null ? "−" : fmtPct(r.target_ratio, 0)}</td>
+        <td>${r.diff_jpy === null ? "−"
+              : `<span class="${r.diff_jpy >= 0 ? "good" : "bad"}">${
+                  r.diff_jpy >= 0 ? "買増" : "売却"} ${fmtShortYen(Math.abs(r.diff_jpy))}</span>`}</td>
+      </tr>`).join("") + "</tbody>";
+}
+
+// ---------- チャート ----------
+
+function baseOptions(scope) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        grid: { display: false },
+        border: { display: false },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 }, maxRotation: 0, autoSkip: true },
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: cssVar("--grid", scope) }, border: { display: false },
+        ticks: { color: cssVar("--text-3", scope), font: { size: 10 },
+                 callback: (v) => fmtShortYen(v) },
+      },
+    },
+  };
+}
+
+function allocChart() {
+  const rows = (dash.allocation || []).filter((r) => r.value > 0);
+  return new Chart(document.getElementById("allocChart"), {
+    type: "doughnut",
+    data: {
+      labels: rows.map((r) => r.label),
+      datasets: [{
+        data: rows.map((r) => r.value),
+        backgroundColor: rows.map((r) => cssVar(CLASS_COLOR[r.class] || "--baseline")),
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: "58%",
+      plugins: {
+        legend: { position: "bottom",
+                  labels: { color: cssVar("--text-2"), font: { size: 11 }, boxWidth: 10 } },
+        tooltip: { callbacks: {
+          label: (c) => ` ${c.label} ${fmtShortYen(c.parsed)}（${fmtPct(c.parsed / dash.summary.total)}）`,
+        } },
+      },
+    },
+  });
+}
+
+// 横軸に収まるよう資産クラス名を詰める（縦棒はラベル幅が取れない）
+const SHORT_CLASS = {
+  "日本株・ETF": "日本株", "米国株・ETF": "米国株", "投資信託": "投信",
+  "現金・預金": "現金", "暗号資産": "暗号資産",
+};
+
+function rebalChart() {
+  // 目標配分があるクラスのみ。調整額の符号で買増/売却を色分けする
+  const rows = (dash.allocation || []).filter((r) => r.diff_jpy !== null);
+  const o = baseOptions();
+  // 差分は 0 を挟んで上下に出る。ゼロ線を境に「上＝買増 / 下＝売却」と読ませる
+  o.scales.y.beginAtZero = true;
+  o.scales.y.ticks = { color: cssVar("--text-3"), font: { size: 10 },
+                       callback: (v) => fmtShortYen(v) };
+  o.scales.y.grid = {
+    color: (c) => (c.tick.value === 0 ? cssVar("--text-3") : cssVar("--grid")),
+    lineWidth: (c) => (c.tick.value === 0 ? 1.5 : 1),
+  };
+  o.plugins.tooltip = { callbacks: {
+    label: (c) => ` ${c.parsed.y >= 0 ? "買増" : "売却"} ${fmtShortYen(Math.abs(c.parsed.y))}`,
+  } };
+  return new Chart(document.getElementById("rebalChart"), {
+    type: "bar",
+    data: {
+      labels: rows.map((r) => SHORT_CLASS[r.label] || r.label),
+      datasets: [{
+        data: rows.map((r) => r.diff_jpy),
+        backgroundColor: rows.map((r) => cssVar(r.diff_jpy >= 0 ? "--good" : "--bad")),
+        borderRadius: 6, borderSkipped: false, maxBarThickness: 40,
+      }],
+    },
+    options: o,
+  });
+}
+
+// 集計途中の月は落ち込んで見えるため、収支・支出グラフからは除く
+function completeMonths() {
+  const cf = dash.cashflow;
+  if (!cf) return [];
+  const ms = cf.monthly.filter((m) => m.month !== cf.incomplete_month);
+  return ms.slice(-EXPENSE_MONTHS);
+}
+
+function netChart(scope) {
+  const ms = completeMonths();
+  const o = baseOptions(scope);
+  o.scales.y.beginAtZero = true;
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 収支 ${fmtShortYen(c.parsed.y)}` } };
+  return new Chart(document.getElementById("netChart"), {
+    type: "bar",
+    data: {
+      labels: ms.map((m) => fmtMonth(m.month)),
+      datasets: [{
+        data: ms.map((m) => m.net),
+        backgroundColor: ms.map((m) => cssVar(m.net >= 0 ? "--good" : "--bad", scope)),
+        borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
+      }],
+    },
+    options: o,
+  });
+}
+
+function expenseChart(scope) {
+  const ms = completeMonths();
+  const avg = ms.length ? ms.reduce((a, m) => a + m.expense, 0) / ms.length : 0;
+  const o = baseOptions(scope);
+  o.plugins.tooltip = { callbacks: { label: (c) => ` 支出 ${fmtShortYen(c.parsed.y)}` } };
+  return new Chart(document.getElementById("expenseChart"), {
+    type: "bar",
+    data: {
+      labels: ms.map((m) => fmtMonth(m.month)),
+      datasets: [
+        {
+          data: ms.map((m) => m.expense),
+          backgroundColor: cssVar("--rhr", scope),
+          borderRadius: 6, borderSkipped: false, maxBarThickness: 22,
+        },
+        {
+          type: "line",
+          data: ms.map(() => Math.round(avg)),
+          borderColor: cssVar("--baseline", scope),
+          borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0, fill: false,
+        },
+      ],
+    },
+    options: o,
+  });
+}
+
+// 記録の粒度は途中で変わる（過去は各月末のみ、直近は週次）。
+// 点の間隔が空く区間を「月次」とみなし、境界の位置を返す
+const WEEKLY_GAP_DAYS = 20;
+
+function granularitySplit(rows) {
+  const gapDays = (a, b) => (Date.parse(b.date) - Date.parse(a.date)) / 86400000;
+  let i = rows.length - 1;
+  while (i > 0 && gapDays(rows[i - 1], rows[i]) <= WEEKLY_GAP_DAYS) i--;
+  return i;   // この位置より前が月次。境界の点は両方の系列に含めて線を繋ぐ
+}
+
+// 横軸は「起点からの月数」で持つ。カテゴリ軸だと週次の点と月次の点が
+// 同じ幅を占め、時間が歪んで見通しの傾きも実際と変わってしまう
+function monthPos(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return y * 12 + (m - 1) + (d - 1) / days;
+}
+
+function monthLabel(pos) {
+  const y = Math.floor(pos / 12);
+  const m = Math.floor(pos - y * 12) + 1;
+  return m === 1 ? `${y}` : `${String(y).slice(2)}/${String(m).padStart(2, "0")}`;
+}
+
+// 目盛りを Chart.js 任せにすると 20 か月刻みのような半端な位置に置かれ、
+// 年の区切りとして読めない（ラベルも切り捨てで実位置とずれる）。年初を基準に
+// 整数月で自前生成し、8 本に収まる最小の刻みを選ぶ
+const TICK_STEPS = [1, 3, 6, 12, 24, 60];
+function monthTicks(min, max) {
+  let ticks = [];
+  for (const step of TICK_STEPS) {
+    ticks = [];
+    for (let v = Math.ceil(min / step) * step; v <= max; v += step) ticks.push(v);
+    if (ticks.length <= 8) break;
+  }
+  return ticks;
+}
+
+// min / max を明示しないと bounds:"ticks" の既定で軸が目盛りの外側まで広がり、
+// 左端が観測開始よりずっと前になる
+function timeAxis(min, max) {
+  return {
+    type: "linear",
+    min, max,
+    grid: { display: false },
+    border: { display: false },
+    afterBuildTicks: (axis) => {
+      if (min === undefined || max === undefined) return;
+      axis.ticks = monthTicks(min, max).map((value) => ({ value }));
+    },
+    ticks: {
+      color: cssVar("--text-3"), font: { size: 10 }, maxRotation: 0,
+      autoSkip: true,
+      callback: (v) => monthLabel(v),
+    },
+  };
+}
+
+function assetChart() {
+  const o = baseOptions();
+  o.parsing = false;
+  o.scales.y.beginAtZero = false;
+  o.plugins.tooltip = { callbacks: {
+    title: (items) => monthLabel(items[0].parsed.x),
+    label: (c) => ` ${c.dataset.label} ${fmtShortYen(c.parsed.y)}`,
+  } };
+
+  const split = granularitySplit(history);
+  const hasMonthly = split > 0;
+  const proj = (dash.fire && dash.fire.projection) || [];
+  const target = dash.fire && dash.fire.target_assets;
+  const pt = (h) => ({ x: monthPos(h.date), y: h.total });
+
+  // 左端は観測開始月の 1 日に揃える（打つのは月末の点なので、そのままだと
+  // 開始月が丸ごと欠けて見える）。右端は見通しの終端に合わせて余白を作らない
+  const lastDate = proj.length ? proj[proj.length - 1].date
+                 : history.length ? history[history.length - 1].date : null;
+  const xMin = history.length ? Math.floor(monthPos(history[0].date)) : undefined;
+  const xMax = lastDate ? monthPos(lastDate) : undefined;
+  o.scales.x = timeAxis(xMin, xMax);
+
+  const datasets = [];
+  if (hasMonthly) {
+    datasets.push({
+      label: "月末時点",
+      data: history.slice(0, split + 1).map(pt),
+      borderColor: cssVar("--text-3"),
+      borderWidth: 1.5, borderDash: [5, 4],
+      pointRadius: split > 40 ? 0 : 2.5,
+      tension: 0.25, fill: false,
+    });
+  }
+  datasets.push({
+    label: hasMonthly ? "週次" : "総資産",
+    data: history.slice(split).map(pt),
+    borderColor: cssVar("--accent"),
+    backgroundColor: cssVar("--fill"),
+    borderWidth: 2,
+    pointRadius: history.length - split > 40 ? 0 : 3,
+    tension: 0.25, fill: true,
+  });
+  if (proj.length) {
+    // 見通しは最後の実績から繋げる（途切れた線にしない）
+    datasets.push({
+      label: "見通し",
+      data: [pt(history[history.length - 1])].concat(
+        proj.map((r) => ({ x: monthPos(r.date), y: r.value }))),
+      borderColor: cssVar("--hrv"),
+      borderWidth: 2, borderDash: [2, 3],
+      pointRadius: 0, tension: 0.2, fill: false,
+    });
+  }
+  if (target && xMin !== undefined) {
+    datasets.push({
+      label: "必要資産",
+      data: [{ x: xMin, y: target }, { x: xMax, y: target }],
+      borderColor: cssVar("--good"),
+      borderWidth: 1.5, borderDash: [8, 4],
+      pointRadius: 0, fill: false,
+    });
+  }
+  o.plugins.legend = { display: datasets.length > 1, position: "bottom",
+                       labels: { color: cssVar("--text-2"), font: { size: 11 }, boxWidth: 18 } };
+
+  const note = document.getElementById("assetNote");
+  if (history.length < 2) {
+    note.textContent = history.length === 1
+      ? "記録は 1 件です。週次運用のたびに点が増え、線として読めるようになります。"
+      : "記録がまだありません。";
+  } else {
+    // mf（週次の実測）と mf_trend（資産推移画面からの補完）はどちらも MF 由来で
+    // 段差が出ない。基準が違うのは csv からの再構成との間だけ
+    const groups = new Set(history.map((h) => (h.basis === "csv" ? "csv" : "mf")));
+    const base = groups.size > 1
+      ? "保有データの出所が途中で変わっています。基準が異なる区間は増減として比較できません。"
+      : `${history[0].date} 以降の記録（${history.length} 件）。`;
+    const parts = [base];
+    if (hasMonthly) parts.push(`${history[split].date} より前は各月末時点の値です。`);
+    if (proj.length) {
+      parts.push(`見通しは年 ${fmtShortYen(dash.fire.annual_investment)} を月割りで、利回り`
+        + ` ${fmtPct(dash.fire.expected_return, 0)} で積み立てた場合の試算で、断定ではありません。`);
+    }
+    note.textContent = parts.join(" ");
+  }
+
+  return new Chart(document.getElementById("assetChart"), {
+    type: "line",
+    data: { datasets },
+    options: o,
+  });
+}
+
+// 出所によってクラスの粒度が違う（補完は株式を日米合算、実測は分けて持つ）
+const CLASS_MERGE = { jp_stock: "stock", us_stock: "stock" };
+// 積み上げは下から順に描く。安全度の高い資産を下に置き、上へ行くほど
+// 値動きが大きくなるよう並べる（土台がどれだけ厚いかを読み取れるように）
+const CLASS_ORDER = ["cash", "fund", "stock", "crypto", "fx"];
+const CLASS_LABEL = {
+  cash: "現金・預金", stock: "株式", fund: "投資信託", crypto: "暗号資産", fx: "FX",
+};
+const CLASS_VAR = {
+  cash: "--rhr", stock: "--steps", fund: "--stand", crypto: "--energy", fx: "--exercise",
+};
+
+function breakdownChart() {
+  const rows = history.filter((h) => h.by_class);
+  const norm = (h) => {
+    const out = {};
+    for (const [k, v] of Object.entries(h.by_class)) {
+      const key = CLASS_MERGE[k] || k;
+      out[key] = (out[key] || 0) + v;
+    }
+    return out;
+  };
+  const normalized = rows.map(norm);
+  const present = CLASS_ORDER.filter((c) => normalized.some((n) => n[c]));
+  const o = baseOptions();
+  o.parsing = false;
+  o.scales.y.beginAtZero = true;
+  o.scales.y.stacked = true;
+  o.scales.x = timeAxis(rows.length ? Math.floor(monthPos(rows[0].date)) : undefined,
+                        rows.length ? monthPos(rows[rows.length - 1].date) : undefined);
+  o.scales.x.stacked = true;
+  o.plugins.legend = { display: true, position: "bottom",
+                       labels: { color: cssVar("--text-2"), font: { size: 11 }, boxWidth: 10 } };
+  o.plugins.tooltip = { callbacks: {
+    title: (items) => monthLabel(items[0].parsed.x),
+    label: (c) => ` ${c.dataset.label} ${fmtShortYen(c.parsed.y)}`,
+  } };
+  return new Chart(document.getElementById("breakdownChart"), {
+    type: "line",
+    data: {
+      datasets: present.map((c) => ({
+        label: CLASS_LABEL[c],
+        data: rows.map((h, i) => ({ x: monthPos(h.date), y: normalized[i][c] || 0 })),
+        backgroundColor: cssVar(CLASS_VAR[c]),
+        borderColor: cssVar(CLASS_VAR[c]),
+        borderWidth: 1, pointRadius: 0, tension: 0.25, fill: true,
+      })),
+    },
+    options: o,
+  });
+}
+
+function renderCharts() {
+  charts.forEach((c) => c.destroy());
+  const spend = document.getElementById("spendBand");
+  charts = [allocChart(), rebalChart(), netChart(spend), expenseChart(spend),
+            assetChart(), breakdownChart()];
+}
+
+function renderAll() {
+  renderHero();
+  renderFire();
+  renderStats();
+  renderAvgs();
+  renderSubs();
+  renderAllocTable();
+  renderCharts();
+}
+
+// ---------- スクロールリビール ----------
+
+let revealDone = false;
+function setupReveal() {
+  if (revealDone || !("IntersectionObserver" in window)) return;
+  revealDone = true;
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+    }
+  }, { threshold: 0.05 });
+  document.querySelectorAll("#content .head, #content .lead, #content .card, #content details")
+    .forEach((el) => {
+      el.classList.add("reveal");
+      io.observe(el);
+    });
+}
+
+// ---------- スクロール駆動ステージ（sticky ピンの中でグラフを切り替える） ----------
+
+let stagesDone = false;
+function setupStages() {
+  if (stagesDone) return;
+  const groups = document.querySelectorAll(".stagegroup");
+  if (!groups.length) return;
+  stagesDone = true;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  groups.forEach((g) => {
+    g.classList.add("js");
+    const panels = [...g.querySelectorAll(".stagepanel")];
+    const tabs = [...g.querySelectorAll(".stagetabs button")];
+    let current = -1;
+    const setStage = (i) => {
+      if (i === current) return;
+      current = i;
+      panels.forEach((p, j) => {
+        p.classList.toggle("active", j === i);
+        p.classList.toggle("passed", j < i);
+      });
+      tabs.forEach((b, j) => b.setAttribute("aria-selected", String(j === i)));
+    };
+    const onScroll = () => {
+      const rect = g.getBoundingClientRect();
+      const span = rect.height - window.innerHeight;
+      const p = span > 0 ? Math.min(1, Math.max(0, -rect.top / span)) : 1;
+      setStage(Math.min(panels.length - 1, Math.floor(p * panels.length)));
+    };
+    tabs.forEach((b, i) => b.addEventListener("click", () => {
+      const span = g.offsetHeight - window.innerHeight;
+      const top = window.scrollY + g.getBoundingClientRect().top;
+      window.scrollTo({ top: top + (span * (i + 0.5)) / panels.length,
+                        behavior: reduce.matches ? "auto" : "smooth" });
+    }));
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  });
+}
+
+// ---------- 操作 ----------
+
+// OS のライト/ダーク切替に追従して再描画（色は CSS 変数から再取得）
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (dash) renderCharts();
+});
+
+// ---------- データ取得 ----------
+
+const noticeEl = document.getElementById("notice");
+const authEl = document.getElementById("auth");
+
+function showAuth(message) {
+  noticeEl.textContent = message || "";
+  noticeEl.hidden = !message;
+  authEl.hidden = false;
+  document.getElementById("content").hidden = true;
+}
+
+async function fetchRaw(url, token) {
+  const res = await fetch(url, {
+    cache: "no-cache",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github.raw+json",
+    },
+  });
+  if (res.status === 404) return null;
+  if (res.status === 401) throw Object.assign(new Error("unauthorized"), { auth: true });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.text();
+}
+
+// JSONL は 1 行 1 レコード。壊れた行は捨てて残りを活かす
+function parseJsonl(text) {
+  if (!text) return [];
+  const out = [];
+  for (const line of text.split("\n")) {
+    const s = line.trim();
+    if (!s) continue;
+    try { out.push(JSON.parse(s)); } catch { /* 壊れた行は無視 */ }
+  }
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+async function load() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) { showAuth(""); return; }
+  authEl.hidden = true;
+  noticeEl.hidden = false;
+  noticeEl.textContent = "読み込み中…";
+  try {
+    const [dashText, histText] = await Promise.all([
+      fetchRaw(DASH_API, token),
+      fetchRaw(HISTORY_API, token),
+    ]);
+    if (!dashText) {
+      noticeEl.textContent =
+        "資産データがまだありません。LIFE 側で scripts/finance-report.sh を実行すると生成されます。";
+      return;
+    }
+    dash = JSON.parse(dashText);
+    history = parseJsonl(histText);
+    noticeEl.hidden = true;
+    document.getElementById("content").hidden = false;
+    renderAll();
+    setupReveal();
+    setupStages();
+  } catch (e) {
+    if (e.auth) {
+      localStorage.removeItem(TOKEN_KEY);
+      showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
+      return;
+    }
+    noticeEl.textContent = `読み込みに失敗しました: ${e.message}`;
+  }
+}
+
+document.getElementById("saveToken").addEventListener("click", () => {
+  const t = document.getElementById("tokenInput").value.trim();
+  if (!t) return;
+  localStorage.setItem(TOKEN_KEY, t);
+  document.getElementById("tokenInput").value = "";
+  load();
+});
+
+document.getElementById("changeToken").addEventListener("click", (e) => {
+  e.preventDefault();
+  showAuth("新しいトークンを入力してください。");
+});
+
+load();
+</script>
+</body>
+</html>
