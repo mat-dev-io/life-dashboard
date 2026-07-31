@@ -504,8 +504,8 @@
             <div class="stagepanel" id="patternCard">
               <div class="stagedesc">
                 <h3>睡眠パターン</h3>
-                <p class="caption">縦軸 = 時刻。各日のステータス遷移</p>
-                <p class="desc">毎晩のステージ遷移を日付順に並べて俯瞰します。バーの位置が揃っているほど、生活リズムは安定しています。</p>
+                <p class="caption">横軸 = 時刻。各日のステータス遷移</p>
+                <p class="desc">毎晩のステージ遷移を日付順に上から並べて俯瞰します。帯の左端と右端が揃っているほど、生活リズムは安定しています。</p>
               </div>
               <div class="stagefig">
                 <div class="legend">
@@ -896,28 +896,34 @@ function renderCharts() {
     options: o,
   }));
 
-  // 2. 睡眠パターン（縦軸 = 時刻。各日のサンプル区間を色分け浮動バーで描く）
+  // 2. 睡眠パターン（横軸 = 時刻・縦軸 = 日付。単日ヒプノグラムを日数分積んだ向きに揃える）
   const patternCard = document.getElementById("patternCard");
   const segsAll = [];
   v.forEach((r, i) => {
     for (const g of dayMap[r.date] || []) {
-      segsAll.push({ x: labels[i], y: [g.s, g.e], state: g.state });
+      segsAll.push({ y: labels[i], x: [g.s, g.e], state: g.state });
     }
   });
   patternCard.hidden = segsAll.length === 0;
   if (segsAll.length) {
-    const yMin = Math.floor(Math.min(...segsAll.map((g) => g.y[0])) / 60) * 60;
-    const yMax = Math.ceil(Math.max(...segsAll.map((g) => g.y[1])) / 60) * 60;
+    const xMin = Math.floor(Math.min(...segsAll.map((g) => g.x[0])) / 60) * 60;
+    const xMax = Math.ceil(Math.max(...segsAll.map((g) => g.x[1])) / 60) * 60;
     o = baseOptions();
+    o.indexAxis = "y";
     o.plugins.legend = { display: false };
     o.plugins.tooltip = { callbacks: {
-      label: (c) => ` ${STATE_LABEL[c.raw.state]} ${unitMinToTime(c.raw.y[0])}〜${unitMinToTime(c.raw.y[1])}（${fmtMin(c.raw.y[1] - c.raw.y[0])}）`,
+      label: (c) => ` ${STATE_LABEL[c.raw.state]} ${unitMinToTime(c.raw.x[0])}〜${unitMinToTime(c.raw.x[1])}（${fmtMin(c.raw.x[1] - c.raw.x[0])}）`,
     } };
-    o.scales.y = {
-      type: "linear", min: yMin, max: yMax, reverse: true, // 早い時刻を上に
+    o.scales.x = {
+      type: "linear", min: xMin, max: xMax, // 左から右へ時間が進む（反転不要）
       grid: { color: grid }, border: { display: false },
       ticks: { color: cssVar("--text-3"), font: { size: 10 },
                stepSize: 120, callback: (val) => unitMinToTime(val) },
+    };
+    o.scales.y = {
+      // カテゴリ軸は既定で先頭が上。labels は日付昇順なので古い日が上・新しい日が下になる
+      grid: { display: false }, border: { display: false },
+      ticks: { color: cssVar("--text-3"), font: { size: 10 }, autoSkip: true },
     };
     charts.push(new Chart(document.getElementById("patternChart"), {
       type: "bar",

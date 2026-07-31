@@ -165,6 +165,22 @@ const sleepSamples = `date,time,state,duration_sec
 
   const pattern = chartByCanvas("patternChart");
   assert("sleep: パターン図の区間数", pattern.cfg.data.datasets[0].data.length === 5);
+  // 単日ヒプノグラム（hypnoChart）と同じ向き: 横軸 = 時刻・縦軸 = 日付
+  assert("sleep: パターン図は横向き（横軸 = 時刻）", pattern.cfg.options.indexAxis === "y");
+  const patX = pattern.cfg.options.scales.x;
+  assert("sleep: 時刻軸は線形", patX.type === "linear");
+  assert("sleep: 時刻は左から右へ進む（反転しない）",
+    !patX.reverse && !pattern.cfg.options.scales.y.reverse);
+  assert("sleep: 時刻軸は 1 時間単位に丸める",
+    patX.min === 60 && patX.max === 840, `${patX.min}-${patX.max}`);
+  assert("sleep: 時刻目盛りは時刻表記", patX.ticks.callback(660) === "23:00", patX.ticks.callback(660));
+  const patSeg = pattern.cfg.data.datasets[0].data[0];
+  assert("sleep: 区間は x が時刻レンジ・y が日付",
+    Array.isArray(patSeg.x) && patSeg.y === pattern.cfg.data.labels[2],
+    JSON.stringify(patSeg));
+  const patTip = pattern.cfg.options.plugins.tooltip.callbacks.label({ raw: { state: "core", x: [660, 720] } });
+  assert("sleep: パターン図のツールチップは時刻レンジを出す",
+    patTip === " Core 23:00〜00:00（1時間）", patTip);
 
   assert("sleep: 平均睡眠時間", els.get("avgs").innerHTML.includes("6時間50分"));
   assert("sleep: 7 時間達成日数", els.get("avgs").innerHTML.includes("1 / 3 日"));
