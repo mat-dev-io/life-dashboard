@@ -504,8 +504,8 @@
             <div class="stagepanel" id="patternCard">
               <div class="stagedesc">
                 <h3>睡眠パターン</h3>
-                <p class="caption">横軸 = 時刻。各日のステータス遷移</p>
-                <p class="desc">毎晩のステージ遷移を日付順に上から並べて俯瞰します。帯の左端と右端が揃っているほど、生活リズムは安定しています。</p>
+                <p class="caption">横軸 = 時刻。行は就寝日（正午〜翌正午）</p>
+                <p class="desc">毎晩のステージ遷移を就寝日順に上から並べて俯瞰します。帯の左端と右端が揃っているほど、生活リズムは安定しています。太い縦線が 0 時の日付境界で、その右側は翌日の未明です。</p>
               </div>
               <div class="stagefig">
                 <div class="legend">
@@ -586,6 +586,8 @@ const DAILY_API = API_BASE + "sleep-daily.csv?ref=main";
 const SAMPLES_API = API_BASE + "sleep-samples.csv?ref=main";
 const TOKEN_KEY = "life_dashboard_pat";
 const TARGET_MIN = 7 * 60;
+// 単位開始（12:00）起点で 00:00 にあたる経過分。パターン図の日付境界線を引く位置
+const DAY_BOUNDARY = 12 * 60;
 
 Chart.defaults.font.family =
   '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
@@ -633,15 +635,18 @@ const timeToY = (hhmm) => {
   const [h, m] = hhmm.split(":").map(Number);
   return ((h + 6) % 24) * 60 + m;
 };
-const yToTime = (y) => {
-  const h = (Math.floor(y / 60) + 18) % 24;
-  return `${String(h).padStart(2, "0")}:${String(Math.round(y % 60)).padStart(2, "0")}`;
+// 経過分 → 時計表示。先に分へ丸めてから時分に分解する
+// （分だけを丸めると 59.6 分が 60 になり "07:60" のような表示になる）。
+// 負値（単位開始より前）でも桁が壊れないよう剰余を正規化する
+const minToClock = (min, baseHour) => {
+  const t = Math.round(min);
+  const h = ((Math.floor(t / 60) + baseHour) % 24 + 24) % 24;
+  const m = ((t % 60) + 60) % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 };
+const yToTime = (y) => minToClock(y, 18);
 // 単位開始（12:00）起点の経過分 → 時計表示
-const unitMinToTime = (m) => {
-  const h = (Math.floor(m / 60) + 12) % 24;
-  return `${String(h).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
-};
+const unitMinToTime = (m) => minToClock(m, 12);
 
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/).map((l) => l.replace(/\r$/, ""));
@@ -914,11 +919,25 @@ function renderCharts() {
     o.plugins.tooltip = { callbacks: {
       label: (c) => ` ${STATE_LABEL[c.raw.state]} ${unitMinToTime(c.raw.x[0])}〜${unitMinToTime(c.raw.x[1])}（${fmtMin(c.raw.x[1] - c.raw.x[0])}）`,
     } };
+    // 行ラベルは就寝日。入眠が 0 時を回る日はバーが日付境界の右側に来るため、
+    // 「その行は翌日の未明」と読めるよう 00:00 のグリッド線だけ強調する
+    const boundaryColor = cssVar("--baseline");
     o.scales.x = {
       type: "linear", min: xMin, max: xMax, // 左から右へ時間が進む（反転不要）
-      grid: { color: grid }, border: { display: false },
+      // 00:00（= DAY_BOUNDARY）を必ず目盛りに含めるため刻みを自前で置く。
+      // 120 は 720 の約数なので、720 が範囲内なら必ず目盛りに乗る
+      afterBuildTicks: (axis) => {
+        const t = [];
+        for (let val = Math.ceil(xMin / 120) * 120; val <= xMax; val += 120) t.push({ value: val });
+        axis.ticks = t;
+      },
+      grid: {
+        color: (c) => (c.tick.value === DAY_BOUNDARY ? boundaryColor : grid),
+        lineWidth: (c) => (c.tick.value === DAY_BOUNDARY ? 2 : 1),
+      },
+      border: { display: false },
       ticks: { color: cssVar("--text-3"), font: { size: 10 },
-               stepSize: 120, callback: (val) => unitMinToTime(val) },
+               callback: (val) => unitMinToTime(val) },
     };
     o.scales.y = {
       // カテゴリ軸は既定で先頭が上。labels は日付昇順なので古い日が上・新しい日が下になる

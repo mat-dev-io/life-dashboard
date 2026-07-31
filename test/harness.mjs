@@ -182,6 +182,26 @@ const sleepSamples = `date,time,state,duration_sec
   assert("sleep: パターン図のツールチップは時刻レンジを出す",
     patTip === " Core 23:00〜00:00（1時間）", patTip);
 
+  // 行ラベルは就寝日なので、0 時をまたぐ夜がどこから翌日かを日付境界線で示す
+  const patTicks = { ticks: [] };
+  patX.afterBuildTicks(patTicks);
+  assert("sleep: 00:00 を必ず目盛りに含める",
+    patTicks.ticks.some((t) => t.value === 720),
+    JSON.stringify(patTicks.ticks.map((t) => t.value)));
+  assert("sleep: 目盛りは範囲内に収まる",
+    patTicks.ticks.every((t) => t.value >= patX.min && t.value <= patX.max));
+  assert("sleep: 日付境界線を太くする",
+    patX.grid.lineWidth({ tick: { value: 720 } }) > patX.grid.lineWidth({ tick: { value: 600 } }));
+  // 色そのものは検証できない（getComputedStyle のスタブが単一値を返すため）。
+  // 境界かどうかで分岐していること自体は lineWidth の差で担保する。
+
+  // 分に丸めてから時分に分解する（59.6 分を 60 にして "06:60" と出さない）
+  assert("sleep: 端数の分は繰り上げて時に送る",
+    patX.ticks.callback(1139.7) === "07:00", patX.ticks.callback(1139.7));
+  assert("sleep: 入眠・起床軸も同じ丸め",
+    time.cfg.options.scales.y.ticks.callback(59.7) === "19:00",
+    time.cfg.options.scales.y.ticks.callback(59.7));
+
   assert("sleep: 平均睡眠時間", els.get("avgs").innerHTML.includes("6時間50分"));
   assert("sleep: 7 時間達成日数", els.get("avgs").innerHTML.includes("1 / 3 日"));
   assert("sleep: テーブルは新しい日が先頭",
