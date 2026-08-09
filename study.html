@@ -557,7 +557,7 @@
             <div class="stagepanel">
               <div class="stagedesc">
                 <h3>分野別の正答率</h3>
-                <p class="caption">期間内の 正答 ÷ 問数（問数の多い順）</p>
+                <p class="caption">期間内の 正答 ÷ 問数（問数の多い順）。分野名は転記時に正規化済み</p>
                 <p class="desc">弱点は、正答率が低い分野ではなく「低いのに問数が少ない分野」に隠れています。棒が短くて問数も少ないものから手を付けます。</p>
               </div>
               <div class="stagefig">
@@ -595,7 +595,9 @@
 </main>
 
 <footer class="foot">
-  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/study/system-architect/kpi-tracker.csv">LIFE/data/study/system-architect/kpi-tracker.csv</a>（Issue #7 への <code>log</code> コメントから転記）<br>
+  データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/study/system-architect/kpi-tracker.csv">kpi-tracker.csv</a>
+  ／ <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/study/system-architect/drill-log.csv">drill-log.csv</a>
+  （LIFE/data/study/system-architect/。Issue #7 への <code>log</code> コメントから転記）<br>
   <a href="#" id="changeToken">トークンを変更</a>
 </footer>
 
@@ -604,6 +606,9 @@
 // private リポジトリのため Contents API + Fine-grained PAT（Contents: Read-only）で取得する
 const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/study/system-architect/";
 const KPI_API = API_BASE + "kpi-tracker.csv?ref=main";
+// 分野別演習の明細（演習 1 件 1 行・分野名は転記時に正規化済み）。
+// kpi-tracker.csv は日単位の集計なので、1 日に複数分野を解いた日はこちらでしか分解できない
+const DRILL_API = API_BASE + "drill-log.csv?ref=main";
 const TOKEN_KEY = "life_dashboard_pat"; // 睡眠・アクティビティ・スクリーン・資産ページと共用
 
 // 試験日程（IPA 公表。CBT のため期間内で受験日を予約する）と週あたりのコア目標。
@@ -618,8 +623,9 @@ const PASS_LINE_PCT = 60;  // 演習の合格ライン
 Chart.defaults.font.family =
   '-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif';
 
-let rows = [];      // 日付昇順・欠測日を 0 で補完した行
-let rangeDays = 84; // 既定は 12 週（週次の棒が 12 本並ぶ）
+let rows = [];              // 日付昇順・欠測日を 0 で補完した行
+let drillsByDate = new Map(); // 日付 → 演習明細の配列
+let rangeDays = 84;         // 既定は 12 週（週次の棒が 12 本並ぶ）
 let charts = [];
 
 // 第2引数でスコープ要素を指定すると、その要素に効いている CSS 変数を読む
@@ -678,19 +684,13 @@ function parseCsv(text) {
   });
 }
 
-// notes に埋め込まれた分野別演習（sa-log-from-comment.sh が「演習:分野 正答/問数」で書く）。
-// 分野名は空白を含みうるので、キーには先頭トークンだけを使う
-function drillsOf(r) {
-  return (r.notes || "").split("／")
-    .map((seg) => seg.match(/^演習:(.+?)\s+(\d+)\/(\d+)$/))
-    .filter(Boolean)
-    .map((m) => ({ field: m[1].trim().split(/\s+/)[0], correct: Number(m[2]), total: Number(m[3]) }));
-}
-// 学び / 弱点 / メモ（演習の記録行を除いた残り）
+const drillsOf = (r) => drillsByDate.get(r.date) || [];
+// 学び / 弱点 / メモ。演習は drill-log.csv 側に構造化されているので notes からは落とす
+// （書式が崩れて明細に入らなかった演習は、詳細テーブルの演習列が空になることで気づける）
 function memosOf(r) {
   return (r.notes || "").split("／")
     .map((s) => s.trim())
-    .filter((s) => s && s !== "initial" && !/^演習:.+\s\d+\/\d+$/.test(s));
+    .filter((s) => s && s !== "initial" && !s.startsWith("演習:"));
 }
 
 const drillSum = (list) => list.reduce((a, r) => {
@@ -1250,6 +1250,21 @@ function buildRows(src) {
   return out;
 }
 
+// 演習明細を日付で引けるようにする。分野名は転記時に正規化済みなので、ここでは束ねるだけ
+function buildDrills(src) {
+  const map = new Map();
+  for (const d of src) {
+    if (!d.date || !d.total) continue;
+    if (!map.has(d.date)) map.set(d.date, []);
+    map.get(d.date).push({
+      field: d.field || "その他",
+      correct: num(d.correct),
+      total: num(d.total),
+    });
+  }
+  return map;
+}
+
 async function load() {
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) { showAuth(""); return; }
@@ -1257,8 +1272,13 @@ async function load() {
   noticeEl.hidden = false;
   noticeEl.textContent = "読み込み中…";
   try {
-    const kpi = await fetchCsv(KPI_API, token);
+    // 明細が無くても時間の推移は読めるので、drill-log.csv は欠けても描画を続ける
+    const [kpi, drill] = await Promise.all([
+      fetchCsv(KPI_API, token),
+      fetchCsv(DRILL_API, token),
+    ]);
     rows = buildRows(kpi || []);
+    drillsByDate = buildDrills(drill || []);
     if (!rows.length) {
       noticeEl.textContent =
         "データがまだありません。Issue #7 への log コメント後に表示されます（.claude/rules/commands.md）。";

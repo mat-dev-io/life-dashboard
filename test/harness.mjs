@@ -394,17 +394,23 @@ const screenBaseline = JSON.stringify({
 // ---------- 学習ページ ----------
 
 // 学習の記録は「やった日だけ行が増える」ので、7/8 の行を欠いて 0 補完を検証する。
-// notes は sa-log-from-comment.sh が書く書式（演習:分野 正答/問数 ／ 学び…）。
-// 分野名に空白が入る実例（「セキュリティ 用語が曖昧」）も含める
+// notes は sa-log-from-comment.sh が書く書式（演習:分野 正答/問数 ／ 学び…）
 const kpiCsv = `date,week,study_hours,sessions,am2_25q_attempts,am2_60plus_count,pm1_miss_count,pm2_completed_count,notes
 2026-03-08,2026-W10,0,0,0,0,0,0,initial
 2026-07-06,2026-W28,1,2,0,0,0,0,演習:ネットワーク 6/10／学びをひとつ書いた
 2026-07-07,2026-W28,0.5,1,0,0,0,0,演習:セキュリティ 用語が曖昧 8/10
 2026-07-09,2026-W28,2,1,0,0,2,0,演習:ネットワーク 9/10／午後Ⅰの復習`;
 
+// 演習の明細（分野名は転記時に正規化済み）。1 日に複数分野を解いた日は複数行になる
+const drillCsv = `date,kind,field,correct,total,minutes,raw
+2026-07-06,drill,ネットワーク,6,10,20,ネットワーク
+2026-07-07,drill,セキュリティ,8,10,,セキュリティ 用語が曖昧
+2026-07-09,drill,ネットワーク,4,5,,ネットワーク 経路制御
+2026-07-09,drill,ネットワーク,5,5,,ネットワーク 品質`;
+
 {
   const { els, filterButtons, ChartStub, chartByCanvas, sandbox } = await runPage("study.html",
-    { "kpi-tracker.csv": kpiCsv }, { now: "2026-07-10T12:00:00Z" });
+    { "kpi-tracker.csv": kpiCsv, "drill-log.csv": drillCsv }, { now: "2026-07-10T12:00:00Z" });
   const t = () => els.get("tiles").innerHTML;
   const ws = () => els.get("weekStats").innerHTML;
 
@@ -451,7 +457,8 @@ const kpiCsv = `date,week,study_hours,sessions,am2_25q_attempts,am2_60plus_count
   assert("study: 週目標 4 時間の点線", week.cfg.data.datasets[1].data.every((y) => y === 4));
 
   const acc = chartByCanvas("accChart");
-  assert("study: 演習が無い日は点を打たない",
+  // 7/9 は 4/5 と 5/5 の 2 件。同じ日の演習は合算して 1 点にする
+  assert("study: 演習が無い日は点を打たない・同日は合算",
     JSON.stringify(acc.cfg.data.datasets[0].data) === "[60,80,null,90,null]",
     JSON.stringify(acc.cfg.data.datasets[0].data));
   assert("study: 合格ライン 60% の点線",
@@ -501,6 +508,19 @@ const kpiCsv = `date,week,study_hours,sessions,am2_25q_attempts,am2_60plus_count
   filterButtons[0].listeners.click();
   assert("study: フィルタ切替で再描画", ChartStub.created.length > before);
   assert("study: aria-pressed 更新", filterButtons[0].attrs["aria-pressed"] === "true");
+}
+
+{
+  // 演習明細が無くても、学習時間の推移は読めるので描画を続ける
+  const { els, chartByCanvas } = await runPage("study.html",
+    { "kpi-tracker.csv": kpiCsv }, { now: "2026-07-10T12:00:00Z" });
+  assert("study: 明細が欠けても content を表示", els.get("content").hidden === false);
+  assert("study: 明細が無ければ正答率は全て null",
+    chartByCanvas("accChart").cfg.data.datasets[0].data.every((v) => v === null));
+  assert("study: 明細が無ければ分野は空",
+    chartByCanvas("fieldChart").cfg.data.labels.length === 0);
+  assert("study: 学習時間は明細に依存しない",
+    JSON.stringify(chartByCanvas("dayChart").cfg.data.datasets[0].data) === "[1,0.5,0,2,0]");
 }
 
 // ---------- 認証画面の表示分岐（共有ブロブ × owner パラメータ） ----------
