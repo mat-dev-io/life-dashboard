@@ -22,14 +22,18 @@ private リポジトリ [LIFE](https://github.com/mat-dev-io/LIFE) のデータ�
 - 学習ダッシュボード: <https://mat-dev-io.github.io/life-dashboard/study.html>
   （ソース: `study.html`。システムアーキテクト試験までの残り日数・週の学習時間と目標 4 時間・
   演習の正答率・累積と必要ペース・曜日別・分野別・学びメモを表示。データは LIFE 側
-  `data/study/system-architect/kpi-tracker.csv`（Issue #7 への `log` コメントを
-  `scripts/sa-log-from-comment.sh` が転記）を読む）
+  `data/study/system-architect/kpi-tracker.csv`（日次の集計）と同 `drill-log.csv`
+  （演習 1 件 1 行の明細）を読む。どちらも Issue #7 への `log` コメントを
+  `scripts/sa-log-from-comment.sh` が転記して生成する）
   - **記録が無い日は欠測ではなく 0 時間**として埋める。学習ログは「やった日だけ行が増える」
     記録なので、行の不在は「やらなかった」を意味する。曜日別平均も 0 の日を含めて割る
   - 週番号は CSV の `week` 列（ISO 週）と同じ規則で補完日にも付ける。ずれると補完日と
     記録日が別の週に落ちて週次集計が壊れる（`test/harness.mjs` が回帰チェック）
-  - 分野別の正答率は `notes` の「演習:分野 正答/問数」を解析している。書式が崩れた行は
-    正答率に載らずメモ側へ落ちる（記録ミスが見えるよう、あえて握りつぶさない）
+  - 分野別の正答率は `drill-log.csv` を正本とする（`kpi-tracker.csv` は日単位の集計なので、
+    1 日に複数分野を解いた日を分解できない）。分野名の表記ゆれは転記時に正規化済みなので、
+    ページ側では束ねるだけ。**明細が取れなくても時間の推移は描く**（正答率と分野だけ空になる）
+  - `notes` の「演習:…」はメモ一覧に出さない（明細と二重に見えるため）。書式が崩れて明細へ
+    入らなかった演習は、詳細テーブルの演習列が空になることで気づける
   - 試験日程と週 4 時間のコア目標はページ内の固定値。実測値ではないので public 側に置く
   - 専用のヒーロー画像は未作成で、グラデーション（夜明け前の紫→青）で代用している
 - 資産ダッシュボード: <https://mat-dev-io.github.io/life-dashboard/finance.html>
