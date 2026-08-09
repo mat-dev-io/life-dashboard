@@ -100,6 +100,14 @@ async function runPage(file, fixtures, opts = {}) {
     URLSearchParams,
     location: { search: opts.search ?? "" },
   };
+  // 「今日」に依存するページ（学習ページの試験カウントダウン・週集計）は時刻を固定する
+  if (opts.now) {
+    const fixed = Date.parse(opts.now);
+    sandbox.Date = class extends Date {
+      constructor(...a) { if (!a.length) super(fixed); else super(...a); }
+      static now() { return fixed; }
+    };
+  }
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(extractScript(html), sandbox, { filename: file });
@@ -383,6 +391,118 @@ const screenBaseline = JSON.stringify({
     els.get("notice").textContent);
 }
 
+// ---------- 学習ページ ----------
+
+// 学習の記録は「やった日だけ行が増える」ので、7/8 の行を欠いて 0 補完を検証する。
+// notes は sa-log-from-comment.sh が書く書式（演習:分野 正答/問数 ／ 学び…）。
+// 分野名に空白が入る実例（「セキュリティ 用語が曖昧」）も含める
+const kpiCsv = `date,week,study_hours,sessions,am2_25q_attempts,am2_60plus_count,pm1_miss_count,pm2_completed_count,notes
+2026-03-08,2026-W10,0,0,0,0,0,0,initial
+2026-07-06,2026-W28,1,2,0,0,0,0,演習:ネットワーク 6/10／学びをひとつ書いた
+2026-07-07,2026-W28,0.5,1,0,0,0,0,演習:セキュリティ 用語が曖昧 8/10
+2026-07-09,2026-W28,2,1,0,0,2,0,演習:ネットワーク 9/10／午後Ⅰの復習`;
+
+{
+  const { els, filterButtons, ChartStub, chartByCanvas, sandbox } = await runPage("study.html",
+    { "kpi-tracker.csv": kpiCsv }, { now: "2026-07-10T12:00:00Z" });
+  const t = () => els.get("tiles").innerHTML;
+  const ws = () => els.get("weekStats").innerHTML;
+
+  // 週番号は kpi-tracker.csv の week 列（sa-log-from-comment.sh が付ける ISO 週）と
+  // 一致させる。ずれると補完日と記録日が別の週に落ちて集計が壊れる
+  assert("study: ISO 週は CSV の week 列と一致",
+    sandbox.isoWeek("2026-07-06") === "2026-W28" && sandbox.isoWeek("2026-07-05") === "2026-W27",
+    `${sandbox.isoWeek("2026-07-06")} / ${sandbox.isoWeek("2026-07-05")}`);
+  assert("study: 年跨ぎの ISO 週",
+    sandbox.isoWeek("2025-12-29") === "2026-W01" && sandbox.isoWeek("2027-01-01") === "2026-W53",
+    `${sandbox.isoWeek("2025-12-29")} / ${sandbox.isoWeek("2027-01-01")}`);
+
+  assert("study: content 表示", els.get("content").hidden === false);
+  assert("study: 直近の試験（科目A）を出す",
+    els.get("examTitle").textContent === "科目A 開始 2026-10-17（CBT・2026-10-27 まで）",
+    els.get("examTitle").textContent);
+  assert("study: 残り日数", els.get("heroNum").innerHTML === "99<small>日</small>",
+    els.get("heroNum").innerHTML);
+  assert("study: 今週の目標との差", t().includes("目標まで 30分"), t());
+  assert("study: もう一方の試験も出す", t().includes("科目B は 2026-11-11 開始"), t());
+
+  assert("study: 今週の学習時間", ws().includes("3時間30分"), ws());
+  assert("study: 学習した日は 7 日中の数", ws().includes("3<small> / 7</small>"), ws());
+  // 当日（7/10）はまだ記録が無いだけなので、連続記録を途切れさせない
+  assert("study: 連続学習日数", /連続学習<\/div>\s*<div class="value">1<small> 日<\/small>/.test(ws()), ws());
+  assert("study: 全期間の正答率（15+8 / 20+10）", ws().includes("77<small> %</small>"), ws());
+
+  const day = chartByCanvas("dayChart");
+  assert("study: 記録が無い日は 0 として埋める",
+    JSON.stringify(day.cfg.data.datasets[0].data) === "[1,0.5,0,2,0]",
+    JSON.stringify(day.cfg.data.datasets[0].data));
+  // 分に丸めてから時分に分解する（0.99h を「0時間60分」と出さない）
+  const dayTip = day.cfg.options.plugins.tooltip.callbacks.label;
+  assert("study: 端数の分は繰り上げて時に送る",
+    dayTip({ parsed: { y: 1.995 } }) === " 学習: 2時間"
+    && dayTip({ parsed: { y: 0.99 } }) === " 学習: 59分",
+    `${dayTip({ parsed: { y: 1.995 } })} / ${dayTip({ parsed: { y: 0.99 } })}`);
+
+  const week = chartByCanvas("weekChart");
+  assert("study: 週次は ISO 週で合算",
+    JSON.stringify(week.cfg.data.labels) === '["W28"]'
+    && JSON.stringify(week.cfg.data.datasets[0].data) === "[3.5]",
+    JSON.stringify(week.cfg.data.datasets[0].data));
+  assert("study: 週目標 4 時間の点線", week.cfg.data.datasets[1].data.every((y) => y === 4));
+
+  const acc = chartByCanvas("accChart");
+  assert("study: 演習が無い日は点を打たない",
+    JSON.stringify(acc.cfg.data.datasets[0].data) === "[60,80,null,90,null]",
+    JSON.stringify(acc.cfg.data.datasets[0].data));
+  assert("study: 合格ライン 60% の点線",
+    acc.cfg.data.datasets[1].data.every((y) => y === 60));
+
+  const cum = chartByCanvas("cumChart");
+  assert("study: 累積は単調増加",
+    JSON.stringify(cum.cfg.data.datasets[0].data) === "[1,1.5,1.5,3.5,3.5]",
+    JSON.stringify(cum.cfg.data.datasets[0].data));
+  assert("study: 必要ペースは週 4 時間を日割り",
+    cum.cfg.data.datasets[1].data.at(-1) === 2.86,
+    JSON.stringify(cum.cfg.data.datasets[1].data));
+
+  const dow = chartByCanvas("dowChart");
+  assert("study: 曜日別平均（記録の無い曜日は null）",
+    JSON.stringify(dow.cfg.data.datasets[0].data) === "[null,1,0.5,0,2,0,null]",
+    JSON.stringify(dow.cfg.data.datasets[0].data));
+
+  const field = chartByCanvas("fieldChart");
+  assert("study: 分野は横棒", field.cfg.options.indexAxis === "y");
+  assert("study: 分野名は先頭トークン・問数の多い順",
+    JSON.stringify(field.cfg.data.labels) === '["ネットワーク","セキュリティ"]',
+    JSON.stringify(field.cfg.data.labels));
+  assert("study: 分野別正答率",
+    JSON.stringify(field.cfg.data.datasets[0].data) === "[75,80]",
+    JSON.stringify(field.cfg.data.datasets[0].data));
+
+  assert("study: チャート数（週・日・正答率・累積・曜日・分野）",
+    ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
+
+  const notes = els.get("notesList").innerHTML;
+  assert("study: メモは新しい日が先頭",
+    notes.indexOf("午後Ⅰの復習") < notes.indexOf("学びをひとつ書いた"), notes);
+  assert("study: 演習の記録行はメモに出さない", !notes.includes("演習:"), notes);
+
+  const table = els.get("dataTable").innerHTML;
+  assert("study: initial 行は行にしない", !table.includes("2026-03-08"), table);
+  assert("study: 学習も記録も無い日は表に出さない", !table.includes("2026-07-08"), table);
+  assert("study: 演習列は 正答/問数", table.includes("<td>9/10</td>"), table);
+  assert("study: 午後Ⅰの外し件数", table.includes("<td>2</td>"), table);
+
+  assert("study: 目標達成週", els.get("avgs").innerHTML.includes("0 / 1 週"),
+    els.get("avgs").innerHTML);
+  assert("study: 期間合計", els.get("avgs").innerHTML.includes("3時間30分"));
+
+  const before = ChartStub.created.length;
+  filterButtons[0].listeners.click();
+  assert("study: フィルタ切替で再描画", ChartStub.created.length > before);
+  assert("study: aria-pressed 更新", filterButtons[0].attrs["aria-pressed"] === "true");
+}
+
 // ---------- 認証画面の表示分岐（共有ブロブ × owner パラメータ） ----------
 
 const dummyBlob = JSON.stringify(
@@ -660,8 +780,9 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
   const act = readFileSync(join(root, "activity.html"), "utf8");
   const scr = readFileSync(join(root, "screen.html"), "utf8");
   const fin = readFileSync(join(root, "finance.html"), "utf8");
+  const stu = readFileSync(join(root, "study.html"), "utf8");
   // 資産ページは共有パスワードで開けないため、共有 UI 系の不変条件から除く
-  const pages = [["index", idx], ["activity", act], ["screen", scr]];
+  const pages = [["index", idx], ["activity", act], ["screen", scr], ["study", stu]];
   const allPages = [...pages, ["finance", fin]];
   for (const [name, html] of pages) {
     assert(`${name}: 共有パスワード UI`, html.includes('id="pwInput"') && html.includes('id="pwSubmit"'));
@@ -716,13 +837,14 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
 
   // 全ページが相互にリンクしていること（トップバーのナビ）
   for (const [name, html] of allPages) {
-    for (const href of ["index.html", "activity.html", "screen.html", "finance.html"]) {
+    for (const href of ["index.html", "activity.html", "screen.html", "study.html", "finance.html"]) {
       assert(`${name}: ナビに ${href}`, html.includes(`<a href="${href}"`));
     }
   }
   // スクロール駆動ステージ: タブ数とパネル数が一致すること
   for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]],
-                                      ["screen", scr, [4, 2]], ["finance", fin, [2, 2, 2]]]) {
+                                      ["screen", scr, [4, 2]], ["study", stu, [4, 2]],
+                                      ["finance", fin, [2, 2, 2]]]) {
     const sections = html.split('class="stagegroup"').slice(1);
     assert(`${name}: ステージグループ数`, sections.length === groups.length,
       `found=${sections.length}`);
@@ -768,10 +890,18 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
   assert("finance: ヒーロー背景画像", fin.includes("assets/hero/finance-hero.webp"));
   assert("finance: 他ページのヒーロー画像を流用しない",
     !/assets\/hero\/(sleep|activity|screen)-hero\.webp/.test(fin));
+  // 学習ページは専用のヒーロー画像を持たない（グラデーションで代用）。
+  // 用意できるまで他ページの画像を流用しない
+  assert("study: ヒーローはグラデーション", stu.includes("linear-gradient(165deg"));
+  assert("study: 他ページのヒーロー画像を流用しない", !/assets\/hero\//.test(stu));
+  // 目標値と試験日程はページ内の固定値（実測データではない）
+  assert("study: 週 4 時間のコア目標", stu.includes("WEEKLY_GOAL_H = 4"));
+  assert("study: 試験は科目 A / B の 2 段階", /key: "a"[\s\S]*key: "b"/.test(stu));
 
   // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
   for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6],
-                                     ["screen", scr, 6], ["finance", fin, 6]]) {
+                                     ["screen", scr, 6], ["study", stu, 6],
+                                     ["finance", fin, 6]]) {
     const descs = (html.match(/class="stagedesc"/g) || []).length;
     const figs = (html.match(/class="stagefig"/g) || []).length;
     const bodies = (html.match(/class="desc"/g) || []).length;
