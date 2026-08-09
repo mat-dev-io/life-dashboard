@@ -244,19 +244,31 @@ const sleepSamples = `date,time,state,duration_sec
 
 // ---------- アクティビティページ ----------
 
-const metricsDaily = `date,steps,active_kcal,stand_min,resting_hr,hrv_ms
-2026-07-10,8210,320,540,58,45
-2026-07-11,12345,410,600,56,
-2026-07-12,9500,,480,57,60`;
+const metricsDaily = `date,steps,active_kcal,stand_min,resting_hr,hrv_ms,weight_kg,body_fat_pct
+2026-07-10,8210,320,540,58,45,70.0,20.0
+2026-07-11,12345,410,600,56,,71.0,21.0
+2026-07-12,9500,,480,57,60,72.0,22.0`;
 
 const healthLog = `date,exercise_min
 2026-07-11,30
 2026-07-13,20`;
 
+// 体組成の目標。数値はすべて架空（このリポジトリは public なので実データは置かない）
+const bodyGoals = JSON.stringify({
+  schema_version: 1,
+  updated: "2026-07-12",
+  targets: {
+    weight_kg: { direction: "hold", min: 68, max: 74 },
+    body_fat_pct: { direction: "down", max: 24, milestone: 18 },
+    lean_body_mass_kg: { direction: "up", min: 54, milestone: 58 },
+  },
+});
+
 {
   const { els, ChartStub, chartByCanvas } = await runPage("activity.html", {
     "metrics-daily.csv": metricsDaily,
     "health-log.csv": healthLog,
+    "body-goals.json": bodyGoals,
   });
   const t = () => els.get("tiles").innerHTML;
   const ds = () => els.get("dayStats").innerHTML;
@@ -291,8 +303,101 @@ const healthLog = `date,exercise_min
     JSON.stringify(hrv.cfg.data.datasets[1].data) === "[45,null,60,null]");
 
   assert("act: 運動日カウント", els.get("avgs").innerHTML.includes("2 / 4 日"));
-  assert("act: チャート数（棒4 + 心拍 + HRV）",
-    ChartStub.created.length === 6, `created=${ChartStub.created.length}`);
+
+  // ---- 体組成（体重・体脂肪率・除脂肪体重） ----
+
+  const weight = chartByCanvas("weightChart");
+  const wMa = weight.cfg.data.datasets[0].data;
+  // 単日の点は主役にしない: 線が 7 日移動平均、点は実測
+  assert("act: 体重は 7 日移動平均が主役の線",
+    weight.cfg.type === "line" && weight.cfg.data.datasets[0].pointRadius === 0
+    && weight.cfg.data.datasets[1].showLine === false);
+  // 溜まっていない時期に線を引かない（窓のサンプルが 3 点未満なら null）
+  assert("act: 体重 移動平均は 3 点未満なら引かない",
+    wMa[0] === null && wMa[1] === null, JSON.stringify(wMa));
+  assert("act: 体重 移動平均（70,71,72 → 71）", wMa[2] === 71, JSON.stringify(wMa));
+  // 記録が無い日でも、直近 7 日に 3 点あれば線は続く（実測点だけ欠ける）
+  assert("act: 欠測日も移動平均の線は続く", wMa[3] === 71, JSON.stringify(wMa));
+  assert("act: 体重の実測点は欠測 null",
+    JSON.stringify(weight.cfg.data.datasets[1].data) === "[70,71,72,null]",
+    JSON.stringify(weight.cfg.data.datasets[1].data));
+  // Chart.js の既定 bounds:"ticks" のままだと軸がデータ範囲の外まで伸びる。
+  // 体重は変動幅が小さいので、レンジを明示しないとノイズが山脈に見える
+  const wy = weight.cfg.options.scales.y;
+  assert("act: 体重の Y 軸はゼロ起点にしない", wy.beginAtZero === false);
+  assert("act: 体重の Y 軸レンジを明示する（目標バンドを含む）",
+    wy.min === 67 && wy.max === 75, `${wy.min}-${wy.max}`);
+  assert("act: 体重は目標バンドの上下端を点線で引く",
+    weight.cfg.data.datasets.length === 4
+    && weight.cfg.data.datasets.slice(2).every((d) => d.borderDash && d.data.every((y, _, a) => y === a[0])),
+    JSON.stringify(weight.cfg.data.datasets.map((d) => d.label)));
+  assert("act: 目標線のラベルは下限・上限",
+    JSON.stringify(weight.cfg.data.datasets.slice(2).map((d) => d.label)) === '["下限","上限"]');
+
+  const fat = chartByCanvas("fatChart");
+  assert("act: 体脂肪率 移動平均（20,21,22 → 21）",
+    fat.cfg.data.datasets[0].data[2] === 21, JSON.stringify(fat.cfg.data.datasets[0].data));
+  assert("act: 体脂肪率は上限と目安の 2 本",
+    JSON.stringify(fat.cfg.data.datasets.slice(2).map((d) => d.label)) === '["上限","目安"]');
+
+  const lean = chartByCanvas("leanChart");
+  // 除脂肪体重 = 体重 ×（100 − 体脂肪率）。両方そろった日だけ算出する
+  assert("act: 除脂肪体重の導出",
+    JSON.stringify(lean.cfg.data.datasets[1].data) === "[56,56.1,56.2,null]",
+    JSON.stringify(lean.cfg.data.datasets[1].data));
+  assert("act: 除脂肪体重の移動平均",
+    Math.abs(lean.cfg.data.datasets[0].data[2] - 56.1) < 1e-9,
+    JSON.stringify(lean.cfg.data.datasets[0].data));
+  assert("act: 除脂肪体重は下限と目安の 2 本",
+    JSON.stringify(lean.cfg.data.datasets.slice(2).map((d) => d.label)) === '["下限","目安"]');
+
+  const ds2 = els.get("dayStats").innerHTML;
+  assert("act: 体組成は単日タイルにも出す", ds2.includes("除脂肪体重"), ds2);
+  const avgs = els.get("avgs").innerHTML;
+  assert("act: 期間平均に体重（71.0 kg）", avgs.includes("71.0 kg"), avgs);
+  assert("act: 期間平均に体脂肪率（21.0 %）", avgs.includes("21.0 %"), avgs);
+  assert("act: テーブルに体重・体脂肪率の列",
+    els.get("dataTable").innerHTML.includes("72.0kg")
+    && els.get("dataTable").innerHTML.includes("22.0%"),
+    els.get("dataTable").innerHTML);
+
+  assert("act: チャート数（棒4 + 心拍 + HRV + 体組成3）",
+    ChartStub.created.length === 9, `created=${ChartStub.created.length}`);
+}
+
+{
+  // 目標が読めなくても推移そのものは読めるので、body-goals.json の欠落では止めない
+  const { els, chartByCanvas } = await runPage("activity.html", {
+    "metrics-daily.csv": metricsDaily,
+    "health-log.csv": healthLog,
+  });
+  assert("act: 目標が無くても content を表示", els.get("content").hidden === false);
+  const weight = chartByCanvas("weightChart");
+  assert("act: 目標が無ければ基準線を出さない", weight.cfg.data.datasets.length === 2,
+    JSON.stringify(weight.cfg.data.datasets.map((d) => d.label)));
+  // 目標線が無いぶんレンジは実測 + 移動平均だけで決まる。最小幅 3kg は保証する
+  const wy = weight.cfg.options.scales.y;
+  assert("act: 目標が無くても Y 軸に最小幅を保証する",
+    wy.max - wy.min >= 3, `${wy.min}-${wy.max}`);
+}
+
+{
+  // 計測を始めた直後（実測 2 日）は線を引かず、実測点だけを出す
+  const { chartByCanvas } = await runPage("activity.html", {
+    "metrics-daily.csv": `date,steps,active_kcal,stand_min,resting_hr,hrv_ms,weight_kg,body_fat_pct
+2026-07-11,12345,410,600,56,,71.0,21.0
+2026-07-12,9500,,480,57,60,72.0,22.0`,
+    "body-goals.json": bodyGoals,
+  });
+  const weight = chartByCanvas("weightChart");
+  assert("act: 計測直後は移動平均の線を引かない",
+    weight.cfg.data.datasets[0].data.every((v) => v === null),
+    JSON.stringify(weight.cfg.data.datasets[0].data));
+  assert("act: 計測直後でも実測点は出す",
+    JSON.stringify(weight.cfg.data.datasets[1].data) === "[71,72]");
+  assert("act: 計測直後でも Y 軸は目標バンドで決まる",
+    weight.cfg.options.scales.y.min === 67 && weight.cfg.options.scales.y.max === 75,
+    `${weight.cfg.options.scales.y.min}-${weight.cfg.options.scales.y.max}`);
 }
 
 // ---------- スクリーンタイムページ ----------
@@ -862,7 +967,7 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
     }
   }
   // スクロール駆動ステージ: タブ数とパネル数が一致すること
-  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2]],
+  for (const [name, html, groups] of [["index", idx, [4]], ["activity", act, [4, 2, 3]],
                                       ["screen", scr, [4, 2]], ["study", stu, [4, 2]],
                                       ["finance", fin, [2, 2, 2]]]) {
     const sections = html.split('class="stagegroup"').slice(1);
@@ -919,7 +1024,7 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
   assert("study: 試験は科目 A / B の 2 段階", /key: "a"[\s\S]*key: "b"/.test(stu));
 
   // 各ステージパネルは説明カラム（stagedesc + desc 本文）とグラフカラム（stagefig）を持つ
-  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 6],
+  for (const [name, html, total] of [["index", idx, 4], ["activity", act, 9],
                                      ["screen", scr, 6], ["study", stu, 6],
                                      ["finance", fin, 6]]) {
     const descs = (html.match(/class="stagedesc"/g) || []).length;
