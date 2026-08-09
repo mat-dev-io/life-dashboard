@@ -13,7 +13,17 @@ private リポジトリ [LIFE](https://github.com/mat-dev-io/LIFE) のデータ�
   （ソース: `index.html`、データ仕様は LIFE 側 `docs/ops/ios-shortcut-sleep-log.md` を参照）
 - アクティビティダッシュボード: <https://mat-dev-io.github.io/life-dashboard/activity.html>
   （ソース: `activity.html`。歩数・アクティブエネルギー・エクササイズ・スタンド・安静時心拍・
-  心拍変動を表示。データ仕様は LIFE 側 `docs/ops/ios-shortcut-health-metrics-log.md` を参照）
+  心拍変動・体組成を表示。データ仕様は LIFE 側 `docs/ops/ios-shortcut-health-metrics-log.md` を参照）
+  - 体組成（体重・体脂肪率・除脂肪体重）は**7 日移動平均の線を主役**にし、単日の実測は薄い点で
+    添えるだけにする。日内変動が 1kg 前後あるため、単日の値と前日比では判定しない
+  - 窓のサンプルが 3 点未満の日は線を引かない。計測を始めた直後は実測点だけが出て、
+    データが溜まるにつれて線が伸びる
+  - 除脂肪体重は体重と体脂肪率が両方そろった日だけ導出する（LIFE 側 `/health-check` と同じ規則）
+  - 目標バンドは LIFE 側 `data/health/body-goals.json` を PAT 経由で読む。**public 側に目標値を
+    持たない**（実測ベースライン由来の値であり、判定基準を二重定義しないため）。読めなかった
+    場合は基準線を出さずに推移だけを描く
+  - Y 軸のレンジは明示指定する。Chart.js の linear 軸は既定 `bounds:"ticks"` で目盛りの外まで
+    軸を広げるうえ、体組成は変動幅が小さいので、放置すると測定ノイズが山脈のように見える
 - スクリーンタイムダッシュボード: <https://mat-dev-io.github.io/life-dashboard/screen.html>
   （ソース: `screen.html`。合計・消費・消費率・取り上げ回数を、介入前ベースラインと
   比較して表示。ベースラインは実測値のため public 側には置かず、日次データと同じく
