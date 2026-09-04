@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- GitHub Pages はレスポンスヘッダを付けられないので meta で宣言する。
+     ページは localStorage に PAT を持つため、connect-src を GitHub API に限って
+     万一 JS が混入しても外部へ送信できないようにする。
+     frame-ancestors は meta では無効（ヘッダ専用）なので、ここには書かない -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -17,7 +22,10 @@
 <meta property="og:image" content="https://mat-dev-io.github.io/life-dashboard/assets/og/og-image.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <title>睡眠 | LIFE</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<!-- CDN 側が汚染されても実行させないため SRI で内容を固定する（PAT を読める位置で動くため） -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+        integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF"
+        crossorigin="anonymous"></script>
 <style>
   :root {
     color-scheme: light;
@@ -610,6 +618,11 @@ const stateColors = (el) => ({
 });
 const STATE_LABEL = { awake: "覚醒", rem: "レム", core: "Core", deep: "深い睡眠" };
 
+// データ由来の文字列は innerHTML へ入れる前にエスケープする
+// （CSV / JSON の自由記述欄が、PAT を読める位置でのスクリプト実行の入口になるため）
+const escapeHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
+
 const fmtMin = (m) => {
   m = Math.round(m);
   const h = Math.floor(m / 60), r = m % 60;
@@ -744,17 +757,17 @@ function renderDay() {
   document.getElementById("dayStats").innerHTML = `
     <div class="statgrid">
       <div class="stat"><div class="label">入眠 → 起床</div>
-        <div class="value">${r.sleep_onset}<small> → </small>${r.wake_time}</div></div>
+        <div class="value">${escapeHtml(r.sleep_onset)}<small> → </small>${escapeHtml(r.wake_time)}</div></div>
       <div class="stat"><div class="label">就床から入眠</div>
-        <div class="value">${r.latency_min !== "" ? r.latency_min + "<small>分</small>" : "−"}</div></div>
+        <div class="value">${r.latency_min !== "" ? escapeHtml(r.latency_min) + "<small>分</small>" : "−"}</div></div>
       <div class="stat"><div class="label">睡眠効率</div>
-        <div class="value">${r.efficiency_pct !== "" ? r.efficiency_pct + "<small>%</small>" : "−"}</div></div>
+        <div class="value">${r.efficiency_pct !== "" ? escapeHtml(r.efficiency_pct) + "<small>%</small>" : "−"}</div></div>
       <div class="stat"><div class="label">深い睡眠</div>
         <div class="value">${fmtMin(r.deep_min)}</div></div>
       <div class="stat"><div class="label">レム睡眠</div>
         <div class="value">${fmtMin(r.rem_min)}</div></div>
       <div class="stat"><div class="label">中途覚醒</div>
-        <div class="value">${r.awake_count}<small>回 / ${fmtMin(r.awake_min)}</small></div></div>
+        <div class="value">${escapeHtml(r.awake_count)}<small>回 / ${fmtMin(r.awake_min)}</small></div></div>
     </div>`;
 
   renderHypno(r.date);
@@ -834,11 +847,11 @@ function renderAvgs() {
 function renderTable() {
   const head = ["日付", "入眠", "起床", "入眠まで", "睡眠", "Core", "Deep", "REM", "覚醒", "在床", "効率%"];
   const body = [...visibleRows()].reverse().map((r) => `<tr>
-    <td>${r.date}</td><td>${r.sleep_onset}</td><td>${r.wake_time}</td>
-    <td>${r.latency_min}分</td><td>${fmtMin(r.sleep_min)}</td>
-    <td>${r.core_min}分</td><td>${r.deep_min}分</td><td>${r.rem_min}分</td>
-    <td>${r.awake_count}回/${r.awake_min}分</td>
-    <td>${fmtMin(r.in_bed_min)}</td><td>${r.efficiency_pct}</td></tr>`).join("");
+    <td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.sleep_onset)}</td><td>${escapeHtml(r.wake_time)}</td>
+    <td>${escapeHtml(r.latency_min)}分</td><td>${fmtMin(r.sleep_min)}</td>
+    <td>${escapeHtml(r.core_min)}分</td><td>${escapeHtml(r.deep_min)}分</td><td>${escapeHtml(r.rem_min)}分</td>
+    <td>${escapeHtml(r.awake_count)}回/${escapeHtml(r.awake_min)}分</td>
+    <td>${fmtMin(r.in_bed_min)}</td><td>${escapeHtml(r.efficiency_pct)}</td></tr>`).join("");
   document.getElementById("dataTable").innerHTML =
     `<tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr>${body}`;
 }
