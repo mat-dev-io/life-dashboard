@@ -934,6 +934,31 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
     assert(`${name}: 常時ダークバンド`, html.includes("band-dark"));
     assert(`${name}: JS 無効時はステージを縦積み表示`, html.includes(".stagegroup:not(.js)"));
   }
+
+  // 供給経路と持ち出し経路の固定。ページは localStorage に PAT を持つので、
+  // CDN の内容は SRI で、外部への送信先は CSP の connect-src で縛る
+  const CHART_SRI = "sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF";
+  for (const [name, html] of allPages) {
+    assert(`${name}: Chart.js を SRI で固定`,
+      html.includes(`integrity="${CHART_SRI}"`) && html.includes('crossorigin="anonymous"'));
+    const csp = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
+    assert(`${name}: CSP メタがある`, !!csp);
+    if (csp) {
+      assert(`${name}: CSP は default-src 'none' 起点`,
+        csp[1].startsWith("default-src 'none';"), csp[1]);
+      assert(`${name}: CSP の外部スクリプトは jsDelivr のみ`,
+        /script-src 'self' 'unsafe-inline' https:\/\/cdn\.jsdelivr\.net;/.test(csp[1]), csp[1]);
+      assert(`${name}: CSP の送信先は GitHub API のみ`,
+        /connect-src 'self' https:\/\/api\.github\.com;/.test(csp[1]), csp[1]);
+    }
+    assert(`${name}: escapeHtml を持つ`, /const escapeHtml = /.test(html));
+  }
+  // 自由記述欄は必ずエスケープを通す（Issue コメント → CSV → innerHTML の経路を塞ぐ）
+  assert("screen: notes をエスケープして描画",
+    scr.includes("${escapeHtml(r.notes)}") && !scr.includes('${r.notes || ""}'));
+  assert("finance: 定期課金名をエスケープして描画", fin.includes("escapeHtml(String(s.name)"));
+  assert("finance: 資産クラス名をエスケープして描画", fin.includes("${escapeHtml(r.label)}"));
+  assert("study: メモをエスケープして描画", stu.includes("escapeHtml(m)"));
   // このリポジトリは public。個人の実測値・実額は（テスト用でも）置かない — Issue #195
   assert("screen: 介入前ベースラインは private 側から読む",
     scr.includes("screen-baseline.json") && !/weekday:\s*\{\s*label:/.test(scr));

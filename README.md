@@ -81,6 +81,41 @@ private リポジトリ [LIFE](https://github.com/mat-dev-io/LIFE) のデータ�
 用意する場合は `assets/hero/finance-hero.webp` として `assets/README.md` の仕様に
 合わせて配置し、`.hero-section` の `background` を差し替える。
 
+## セキュリティ上の不変条件
+
+ページは **PAT を `localStorage` に持つ**。したがってこのオリジンで動くコードは
+すべて PAT を読める前提で設計する。以下は `test/harness.mjs` が回帰チェックしている。
+
+- **Chart.js は SRI で固定する**（`integrity` + `crossorigin="anonymous"`）。CDN 側が
+  汚染されても実行させないため。バージョンを上げるときはハッシュも同時に更新する:
+
+  ```bash
+  curl -s https://cdn.jsdelivr.net/npm/chart.js@<version>/dist/chart.umd.min.js \
+    | openssl dgst -sha384 -binary | openssl base64 -A
+  ```
+
+- **CSP を `<meta>` で宣言する**（GitHub Pages はレスポンスヘッダを付けられない）。
+  要点は `default-src 'none'` 起点と、**`connect-src` を `api.github.com` に限る**こと。
+  万一スクリプトが混入しても、PAT の送信先を塞ぐのがこの行の役目。外部通信を
+  足すときはここを必ず見直す（インライン `<script>` / `<style>` に依存しているため
+  `'unsafe-inline'` は外せない。自己ホストへ移せば締められる）
+- **データ由来の文字列は `escapeHtml()` を通してから `innerHTML` へ入れる**。
+  自分しか書けないデータでも、経路としては「Issue コメント → CSV → `innerHTML`」で
+  PAT に届く。特に `screen.html` の `notes`（Issue #63 の自由記述）と
+  `finance.html` の定期課金名（家計簿の「内容」列＝**加盟店名や振込依頼人名で
+  第三者由来**）。数値を出す `fmt*()` は経由済みなので二重には包まない
+  （`fmtMinRich` / `fmtDaysRich` / `fmtMinHero` は意図的に markup を返すため包むと壊れる）
+
+### 未対策として認識していること
+
+- **クリックジャッキング**: `frame-ancestors` は `<meta>` では無効（ヘッダ専用）で、
+  GitHub Pages ではヘッダを設定できない。フレーム埋め込みは防げない
+- **共有を再開するときの `TOKEN_KEY` 共用**: 復号した共有 PAT は
+  `life_dashboard_pat` に保存され、`finance.html` は**同じキーを読む**。
+  このままだと「資産ページは共有できない」（上記）が破れる。加えて
+  Fine-grained PAT はパス単位に絞れないため、共有相手は API を直接叩いて
+  LIFE 全体（健診・キャリア・記憶）を読める。**再開前にキーをページ別に分けること**
+
 ## 共有閲覧（パスワード方式）— 現在は無効
 
 **2026-07-25 以降、共有閲覧は停止している**（所有者のみ閲覧する運用）。
