@@ -593,7 +593,20 @@
 const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/health/";
 const DAILY_API = API_BASE + "sleep-daily.csv?ref=main";
 const SAMPLES_API = API_BASE + "sleep-samples.csv?ref=main";
-const TOKEN_KEY = "life_dashboard_pat";
+// 所有者が自分で入れた PAT と、共有パスワードで復号した PAT は別のキーに保存する。
+// finance.html は OWNER_KEY しか読まないので、共有した相手には資産ページが開けない
+const OWNER_KEY = "life_dashboard_pat";
+const SHARED_KEY = "life_dashboard_shared_pat";
+
+// 所有者の PAT を優先する（自分の端末で共有パスワードを試しても表示が退化しない）。
+// 401 のときにどちらを消せばよいか分かるよう、キーも一緒に返す
+const tokenEntry = () => {
+  for (const key of [OWNER_KEY, SHARED_KEY]) {
+    const token = localStorage.getItem(key);
+    if (token) return { token, key };
+  }
+  return null;
+};
 const TARGET_MIN = 7 * 60;
 // 単位開始（12:00）起点で 00:00 にあたる経過分。パターン図の日付境界線を引く位置
 const DAY_BOUNDARY = 12 * 60;
@@ -1192,8 +1205,9 @@ async function fetchCsv(url, token) {
 }
 
 async function load() {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) { showAuth(""); return; }
+  const entry = tokenEntry();
+  if (!entry) { showAuth(""); return; }
+  const token = entry.token;
   authEl.hidden = true;
   noticeEl.hidden = false;
   noticeEl.textContent = "読み込み中…";
@@ -1219,7 +1233,7 @@ async function load() {
     setupStages();
   } catch (e) {
     if (e.auth) {
-      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(entry.key);   // 期限切れになった方だけ捨てる
       showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
       return;
     }
@@ -1230,7 +1244,7 @@ async function load() {
 document.getElementById("saveToken").addEventListener("click", () => {
   const t = document.getElementById("tokenInput").value.trim();
   if (!t) return;
-  localStorage.setItem(TOKEN_KEY, t);
+  localStorage.setItem(OWNER_KEY, t);
   document.getElementById("tokenInput").value = "";
   load();
 });
@@ -1242,7 +1256,7 @@ document.getElementById("pwSubmit").addEventListener("click", async () => {
   err.hidden = true;
   try {
     const pat = await decryptToken(sharedBlob, pw);
-    localStorage.setItem(TOKEN_KEY, pat);
+    localStorage.setItem(SHARED_KEY, pat);   // 資産ページはこのキーを読まない
     document.getElementById("pwInput").value = "";
     load();
   } catch {
@@ -1253,7 +1267,7 @@ document.getElementById("pwSubmit").addEventListener("click", async () => {
 // 所有者向け: 共有用の暗号化 JSON を生成（PAT はブラウザ外に出ない）
 document.getElementById("mkShared").addEventListener("click", async () => {
   const out = document.getElementById("mkOut");
-  const pat = document.getElementById("mkPat").value.trim() || localStorage.getItem(TOKEN_KEY);
+  const pat = document.getElementById("mkPat").value.trim() || localStorage.getItem(OWNER_KEY);
   const pw = document.getElementById("mkPw").value;
   if (!pat) { out.value = "先に PAT を入力するか、この端末で PAT を設定してください。"; return; }
   if (pw.length < 12) { out.value = "パスワードは 12 文字以上にしてください（ランダムな単語 4 つ以上を推奨）。"; return; }

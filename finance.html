@@ -610,7 +610,9 @@
 const API_BASE = "https://api.github.com/repos/mat-dev-io/LIFE/contents/data/finance/";
 const DASH_API = API_BASE + "dashboard.json?ref=main";
 const HISTORY_API = API_BASE + "history.jsonl?ref=main";
-const TOKEN_KEY = "life_dashboard_pat"; // 他ページと共用
+// 所有者の PAT のみを読む。共有パスワードで復号した PAT は他ページが専用キーへ入れる。
+// このページはそのキーを持たない（キー名を書くことすらしない）ため、共有相手には開けない
+const OWNER_KEY = "life_dashboard_pat";
 
 // 資産ページは共有パスワードで開けない（睡眠は共有してよくても資産は別）
 const SHARED_DISABLED = true;
@@ -1253,7 +1255,7 @@ function parseJsonl(text) {
 }
 
 async function load() {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(OWNER_KEY);
   if (!token) { showAuth(""); return; }
   authEl.hidden = true;
   noticeEl.hidden = false;
@@ -1277,7 +1279,7 @@ async function load() {
     setupStages();
   } catch (e) {
     if (e.auth) {
-      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(OWNER_KEY);
       showAuth("トークンが無効です（期限切れの可能性）。再設定してください。");
       return;
     }
@@ -1288,7 +1290,7 @@ async function load() {
 document.getElementById("saveToken").addEventListener("click", () => {
   const t = document.getElementById("tokenInput").value.trim();
   if (!t) return;
-  localStorage.setItem(TOKEN_KEY, t);
+  localStorage.setItem(OWNER_KEY, t);
   document.getElementById("tokenInput").value = "";
   load();
 });
