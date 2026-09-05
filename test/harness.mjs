@@ -52,6 +52,7 @@ async function runPage(file, fixtures, opts = {}) {
   const html = readFileSync(join(root, file), "utf8");
   const ids = collectIds(html);
   const els = new Map();
+  const authHeaders = [];
   const filterButtons = ["7", "30", "90"].map((d) => {
     const b = new El(`filter-${d}`);
     b.dataset.days = d;
@@ -79,12 +80,15 @@ async function runPage(file, fixtures, opts = {}) {
     document,
     console,
     localStorage: {
-      getItem: () => (opts.token === undefined ? "dummy-token" : opts.token),
+      getItem: (k) => (opts.storage
+        ? (opts.storage[k] ?? null)
+        : (opts.token === undefined ? "dummy-token" : opts.token)),
       setItem() {}, removeItem() {},
     },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => "#336699" }),
-    fetch: async (url) => {
+    fetch: async (url, init) => {
+      if (init?.headers?.Authorization) authHeaders.push(init.headers.Authorization);
       for (const [key, body] of Object.entries(fixtures)) {
         if (url.includes(key)) {
           return { ok: true, status: 200,
@@ -113,7 +117,7 @@ async function runPage(file, fixtures, opts = {}) {
   vm.runInContext(extractScript(html), sandbox, { filename: file });
   await new Promise((r) => setTimeout(r, 20)); // load() の完了を待つ
   const chartByCanvas = (id) => ChartStub.created.filter((c) => c.el.id === id).at(-1);
-  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox };
+  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox, authHeaders };
 }
 
 // ---------- 睡眠ページ ----------
@@ -898,6 +902,48 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
   assert("fin: 未認証で content 非表示", els.get("content").hidden === true);
 }
 
+// ---------- トークンのキー分離（資産は共有相手に開かせない） ----------
+
+const OWNER_KEY = "life_dashboard_pat";
+const SHARED_KEY = "life_dashboard_shared_pat";
+
+{
+  // 共有パスワードで入った端末（共有 PAT だけを持つ）では、資産ページは開かない
+  const { els, authHeaders } = await runPage("finance.html",
+    { "dashboard.json": dashboardJson, "history.jsonl": historyJsonl },
+    { storage: { [SHARED_KEY]: "shared-token" } });
+  assert("fin: 共有 PAT では auth 表示", els.get("auth").hidden === false);
+  assert("fin: 共有 PAT では content 非表示", els.get("content").hidden === true);
+  assert("fin: 共有 PAT では API を叩かない", authHeaders.length === 0, authHeaders.join(","));
+}
+{
+  // 所有者の PAT があれば従来どおり開く
+  const { els, authHeaders } = await runPage("finance.html",
+    { "dashboard.json": dashboardJson, "history.jsonl": historyJsonl },
+    { storage: { [OWNER_KEY]: "owner-token" } });
+  assert("fin: 所有者 PAT で content 表示", els.get("content").hidden === false);
+  assert("fin: 所有者 PAT を使う",
+    authHeaders.every((h) => h === "Bearer owner-token"), authHeaders.join(","));
+}
+{
+  // 共有ページ側は共有 PAT だけでも開ける（共有の目的はここ）
+  const { els, authHeaders } = await runPage("index.html",
+    { "sleep-daily.csv": sleepDaily, "sleep-samples.csv": sleepSamples },
+    { storage: { [SHARED_KEY]: "shared-token" } });
+  assert("sleep: 共有 PAT で content 表示", els.get("content").hidden === false);
+  assert("sleep: 共有 PAT を使う",
+    authHeaders.every((h) => h === "Bearer shared-token"), authHeaders.join(","));
+}
+{
+  // 両方ある端末（所有者が共有パスワードを試した後）は所有者 PAT を優先する
+  const { authHeaders } = await runPage("index.html",
+    { "sleep-daily.csv": sleepDaily, "sleep-samples.csv": sleepSamples },
+    { storage: { [OWNER_KEY]: "owner-token", [SHARED_KEY]: "shared-token" } });
+  assert("sleep: 所有者 PAT を優先",
+    authHeaders.length > 0 && authHeaders.every((h) => h === "Bearer owner-token"),
+    authHeaders.join(","));
+}
+
 // ---------- ページ横断の不変条件 ----------
 
 {
@@ -920,12 +966,19 @@ const historyJsonl = `{"date":"2026-07-26","basis":"mf","total":12000000,"pnl":2
   assert("finance: 共有パスワード UI を持たない",
     !fin.includes('id="pwInput"') && !fin.includes('id="pwSubmit"'));
   assert("finance: 共有トークンを参照しない", !fin.includes("shared-token.json"));
+  // 共有パスワードで復号した PAT は別キーに入る。資産ページはそのキーを知らないままにする
+  assert("finance: 共有 PAT のキーを読まない", !fin.includes("life_dashboard_shared_pat"));
+  for (const [name, html] of pages) {
+    assert(`${name}: 共有 PAT は専用キーへ`, html.includes('"life_dashboard_shared_pat"')
+      && html.includes("localStorage.setItem(SHARED_KEY, pat)"));
+    assert(`${name}: PAT 設定は所有者キーへ`, html.includes("localStorage.setItem(OWNER_KEY, t)"));
+  }
   assert("finance: 共有不可を明記", fin.includes("共有パスワードでは開けません"));
   // コピーは FIRE（経済的自立）文脈を保つ。単なる資産一覧に戻さない
   assert("finance: ヒーローのコピー", fin.includes("買い戻す。"));
   assert("finance: 必要資産の考え方を明示", fin.includes("年間支出の 25 倍"));
   for (const [name, html] of allPages) {
-    assert(`${name}: PAT の localStorage キー共用`, html.includes('"life_dashboard_pat"'));
+    assert(`${name}: 所有者 PAT のキーは共通`, html.includes('"life_dashboard_pat"'));
     assert(`${name}: ダークモード追従`, html.includes("prefers-color-scheme: dark"));
     assert(`${name}: モーション設定の尊重`, html.includes("prefers-reduced-motion"));
     assert(`${name}: ビルド無し（CDN Chart.js）`, html.includes("cdn.jsdelivr.net/npm/chart.js"));
