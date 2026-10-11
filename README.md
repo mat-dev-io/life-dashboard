@@ -24,6 +24,10 @@ private リポジトリ [LIFE](https://github.com/mat-dev-io/LIFE) のデータ�
     場合は基準線を出さずに推移だけを描く
   - Y 軸のレンジは明示指定する。Chart.js の linear 軸は既定 `bounds:"ticks"` で目盛りの外まで
     軸を広げるうえ、体組成は変動幅が小さいので、放置すると測定ノイズが山脈のように見える
+  - 週末トレの章（`#training`）: メニューの正本は LIFE 側 `data/health/training-menu.json`
+    （手動更新）で、PAT 経由で読む。**public 側に実メニューを持たない**（テストのフィクスチャも架空の
+    種目名）。実施状況は `health-log.csv` の `training` 列（`ok` の日）から、今週末（月曜始まり・JST）の
+    ○ と前回の実施日を出す。メニューが読めなくても他の章は描く
 - スクリーンタイムダッシュボード: <https://mat-dev-io.github.io/life-dashboard/screen.html>
   （ソース: `screen.html`。合計・消費・消費率・取り上げ回数を、介入前ベースラインと
   比較して表示。ベースラインは実測値のため public 側には置かず、日次データと同じく
