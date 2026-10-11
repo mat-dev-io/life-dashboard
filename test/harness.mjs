@@ -404,6 +404,100 @@ const bodyGoals = JSON.stringify({
     `${weight.cfg.options.scales.y.min}-${weight.cfg.options.scales.y.max}`);
 }
 
+// ---- 週末トレの章 ----
+
+// メニューも架空値（種目名・回数とも実メニューのコピーを置かない）。
+// HTML を含む名前はエスケープの検証用
+const trainingMenu = JSON.stringify({
+  schema_version: 1,
+  session: { total_min: 20, rest: "休憩 60 秒", first_time: "初回は 2 セット", intensity: "最終セットは余力 1〜2 回" },
+  blocks: [
+    { id: "0", title: "準備", min: 2, items: [{ name: "種目W" }, { name: "種目X", reps: 10 }] },
+    { id: "A", title: "交互", superset: true, rounds: 3, min: 8, items: [
+      { id: "A1", name: "種目<img src=x>", reps: 8, sets: 3, per_side: true, cap: 12, cue: "ゆっくり戻す", harder: "台を上げる" },
+      { id: "A2", name: "種目Y", reps: 12, sets: 3, cap: 15 },
+    ] },
+    { id: "C", title: "仕上げ", min: 4, items: [
+      { name: "種目Z", sec: 45, per_side: true, cap: 90 },
+    ] },
+  ],
+  progression: { rule: "余力が 2 回続いたら +2 回", at_cap: "上限後は難易度を上げる" },
+  cautions: ["注意その1"],
+});
+
+// training は ok の日だけ入る。07-08（水）= 平日ボーナス、07-11（土）= 週末
+// 07-08 は exercise_min が空なので、日次の行は増やさない（トレは別系統で数える）
+const trainLog = `date,exercise_min,sleep,sleep_min,training,notes
+2026-07-08,,,,ok,
+2026-07-11,30,ok,420,ok,
+2026-07-13,20,,,,`;
+
+{
+  const { els, ChartStub } = await runPage("activity.html", {
+    "metrics-daily.csv": metricsDaily,
+    "health-log.csv": trainLog,
+    "body-goals.json": bodyGoals,
+    "training-menu.json": trainingMenu,
+  }, { now: "2026-07-12T12:00:00+09:00" }); // 日曜
+  const st = els.get("trainStatus").innerHTML;
+  assert("act/train: 今週末は土曜に実施済み", /○ <small>土曜<\/small>/.test(st), st);
+  assert("act/train: 平日はボーナスとして数える", st.includes("平日ボーナス 1 回"), st);
+  assert("act/train: 前回の実施日", st.includes("07/11(土)"), st);
+  // 除脂肪は体組成チャートと同じ 7 日平均（56,56.1,56.2 → 56.1）と、目標の下限との差
+  assert("act/train: 除脂肪 7 日平均", st.includes("56.1<small> kg</small>"), st);
+  assert("act/train: 下限までの差", st.includes("下限 54.0 まで 2.1"), st);
+  assert("act/train: トレだけの日は日次の行を増やさない",
+    els.get("dayTitle").textContent === "2026-07-13 のアクティビティ");
+
+  const menu = els.get("trainMenu").innerHTML;
+  assert("act/train: 回数×セット（左右）", menu.includes("左右 8×3"), menu);
+  assert("act/train: セット無しの回数", menu.includes("10 回"), menu);
+  assert("act/train: 秒数（左右 各）", menu.includes("左右 各45秒"), menu);
+  assert("act/train: スーパーセットの周回と時間", menu.includes("交互に 3 周 · 約 8 分"), menu);
+  assert("act/train: 補足を添える", menu.includes("ゆっくり戻す"), menu);
+  assert("act/train: 種目名はエスケープする",
+    menu.includes("種目&lt;img src=x&gt;") && !menu.includes("<img"), menu);
+  assert("act/train: 所要時間などのメタ", els.get("trainMeta").textContent.includes("約 20 分"));
+  const rules = els.get("trainRules").innerHTML;
+  assert("act/train: 上限と上げ方", rules.includes("上限 12 回 → 台を上げる")
+    && rules.includes("上限 90 秒"), rules);
+  assert("act/train: 漸進ルールと注意点", rules.includes("+2 回") && rules.includes("注意その1"), rules);
+  assert("act/train: チャート数は変えない", ChartStub.created.length === 9,
+    `created=${ChartStub.created.length}`);
+}
+
+{
+  // 週の途中（水曜）で今週末はまだ。前回は先週の土曜
+  const { els } = await runPage("activity.html", {
+    "metrics-daily.csv": metricsDaily,
+    "health-log.csv": trainLog,
+    "training-menu.json": trainingMenu,
+  }, { now: "2026-07-15T08:00:00+09:00" });
+  const st = els.get("trainStatus").innerHTML;
+  assert("act/train: 未実施は「まだ」", st.includes(">まだ<") && st.includes("土・日のどちらか"), st);
+  assert("act/train: 前回は先週", st.includes("07/11(土)"), st);
+  assert("act/train: 目標が無ければ下限は出さない", !st.includes("下限"), st);
+}
+
+{
+  // メニューが無い・壊れていても、他の章は壊さない
+  for (const [label, fx] of [["欠落", {}], ["破損", { "training-menu.json": "{ broken" }]]) {
+    const { els, ChartStub } = await runPage("activity.html", {
+      "metrics-daily.csv": metricsDaily,
+      "health-log.csv": healthLog,
+      "body-goals.json": bodyGoals,
+      ...fx,
+    });
+    assert(`act/train: メニュー${label}でも content を表示`, els.get("content").hidden === false);
+    assert(`act/train: メニュー${label}でもチャートは描く`, ChartStub.created.length === 9,
+      `created=${ChartStub.created.length}`);
+    assert(`act/train: メニュー${label}は案内を出す`,
+      els.get("trainMenu").innerHTML.includes("読み込めませんでした"), els.get("trainMenu").innerHTML);
+    assert(`act/train: メニュー${label}でも実施状況は出す`,
+      els.get("trainStatus").innerHTML.includes("今週末"));
+  }
+}
+
 // ---------- スクリーンタイムページ ----------
 
 // 7/17 金（平日）, 7/18 土, 7/19 日, 7/20 月（notes=祝日 → 休日扱い）
@@ -1089,6 +1183,12 @@ const SHARED_KEY = "life_dashboard_shared_pat";
   }
   assert("index: ヒーロー背景画像", idx.includes("assets/hero/sleep-hero.webp"));
   assert("activity: ヒーロー背景画像", act.includes("assets/hero/activity-hero.webp"));
+  // 週末トレのメニューは private 側の正本を読む。public のページに実メニューを書かない — Issue #195
+  assert("activity: メニューは training-menu.json から読む", act.includes("training-menu.json"));
+  assert("activity: 実メニューの種目名をページに書かない",
+    !/ブルガリアン|ルーマニアン|プッシュアップ|プランク/.test(act));
+  assert("activity: ヒーローから週末トレの章へ飛べる",
+    act.includes('href="#training"') && act.includes('id="training"'));
   assert("screen: ヒーロー背景画像", scr.includes("assets/hero/screen-hero.webp"));
   assert("finance: ヒーロー背景画像", fin.includes("assets/hero/finance-hero.webp"));
   assert("finance: 他ページのヒーロー画像を流用しない",

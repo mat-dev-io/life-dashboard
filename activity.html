@@ -288,6 +288,29 @@
 
   .notice { color: var(--text-2); padding: 32px 8px; text-align: center; }
 
+  /* 週末トレ: トレ中にスマホで読むメニュー。表ではなく縦のリストで、スクロール 1〜2 回に収める */
+  .herolink {
+    display: inline-block; margin-top: 18px; padding: 7px 16px;
+    border-radius: 980px; background: var(--fill); color: var(--text);
+    font-size: 0.8rem; font-weight: 600; text-decoration: none;
+  }
+  .stat .sub { font-size: 0.7rem; color: var(--text-3); margin-top: 2px; }
+  .stat .sub.bad { color: var(--bad); font-weight: 600; }
+  .tblock + .tblock { border-top: 1px solid var(--sep); margin-top: 10px; padding-top: 10px; }
+  .tblock-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .tblock-head .ttitle { font-weight: 700; font-size: 0.95rem; }
+  .tblock-head .tmeta { margin-left: auto; font-size: 0.75rem; color: var(--text-3); white-space: nowrap; }
+  .titems { list-style: none; margin: 0; padding: 0; }
+  .titems li { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; }
+  .tcode { flex: 0 0 1.8em; font-size: 0.75rem; font-weight: 700; color: var(--text-3); }
+  .tname { flex: 1 1 auto; min-width: 0; font-size: 0.9rem; line-height: 1.4; }
+  .tname small { display: block; font-size: 0.72rem; color: var(--text-3); line-height: 1.5; }
+  .tdose {
+    flex: 0 0 auto; font-size: 0.95rem; font-weight: 700;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .trules { font-size: 0.8rem; color: var(--text-2); line-height: 1.7; margin: 4px 0 0; padding-left: 1.2em; }
+
   /* 初回のアクセス設定（共有パスワード / PAT） */
   .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
   .auth input {
@@ -448,6 +471,7 @@
         <button id="nextDay" aria-label="次の日">›</button>
       </div>
       <div id="tiles"></div>
+      <a class="herolink" href="#training">週末トレのメニュー</a>
       <div class="scrollcue" aria-hidden="true">⌄</div>
     </section>
 
@@ -615,6 +639,24 @@
       </div>
     </section>
 
+    <!-- 週末トレ: メニューの正本は LIFE/data/health/training-menu.json（Issue #278） -->
+    <section class="chapter band-dark" id="training">
+      <div class="chapter-inner">
+        <h2 class="head"><span>守るための、</span><span>週末 1 回。</span></h2>
+        <p class="lead">脂肪を落とすあいだ、筋肉は残す。</p>
+        <div class="card"><div id="trainStatus"></div></div>
+        <div class="card">
+          <h3>メニュー</h3>
+          <p class="caption" id="trainMeta"></p>
+          <div id="trainMenu"></div>
+        </div>
+        <details>
+          <summary>増やし方と注意点</summary>
+          <div id="trainRules"></div>
+        </details>
+      </div>
+    </section>
+
     <!-- 振り返り -->
     <section class="chapter alt">
       <div class="chapter-inner">
@@ -638,6 +680,7 @@
 <footer class="foot">
   データ: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/metrics-daily.csv">LIFE/data/health/metrics-daily.csv</a> ほか（毎日 12:15 に自動更新）<br>
   体組成の目標: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/body-goals.json">LIFE/data/health/body-goals.json</a>（手動更新の正本）<br>
+  トレのメニュー: <a href="https://github.com/mat-dev-io/LIFE/blob/main/data/health/training-menu.json">LIFE/data/health/training-menu.json</a>（手動更新の正本）<br>
   <a href="#" id="changeToken">トークンを変更</a>
 </footer>
 
@@ -650,6 +693,8 @@ const LOG_API = API_BASE + "health-log.csv?ref=main";
 // 体組成の目標は body-goals.json が唯一の正本（手動更新）。ここでは値を持たず読むだけで、
 // /health-check の判定基準と二重定義にしない
 const GOALS_API = API_BASE + "body-goals.json?ref=main";
+// 週末トレのメニューも同じく手動更新の正本を読むだけ。メニュー本体はこの public リポジトリに置かない
+const MENU_API = API_BASE + "training-menu.json?ref=main";
 // 所有者が自分で入れた PAT と、共有パスワードで復号した PAT は別のキーに保存する。
 // finance.html は OWNER_KEY しか読まないので、共有した相手には資産ページが開けない
 const OWNER_KEY = "life_dashboard_pat";
@@ -672,6 +717,8 @@ Chart.defaults.font.family =
 //                   weight_kg, body_fat_pct, lean_kg}
 let rows = [];
 let goals = null;      // body-goals.json（未取得なら目標線を出さずに推移だけ描く）
+let menu = null;       // training-menu.json（未取得ならメニューの代わりに案内だけ出す）
+let trainDates = [];   // health-log.csv の training=ok の日付（昇順）
 let selIdx = -1;
 let rangeDays = 7;
 let charts = [];
@@ -1026,11 +1073,94 @@ function renderCharts() {
   );
 }
 
+// ---------- 週末トレ ----------
+
+// 「今週」は月曜始まり。日付は端末 TZ に依存させず JST で決める（記録の日付も JST）
+const jstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+const addDays = (d, n) => new Date(toMs(d) + n * DAY_MS).toISOString().slice(0, 10);
+
+function renderTrainStatus() {
+  const today = jstToday();
+  const mon = addDays(today, -((new Date(toMs(today)).getUTCDay() + 6) % 7));
+  const sat = addDays(mon, 5), sun = addDays(mon, 6);
+  const doneDay = [sat, sun].find((d) => trainDates.includes(d));
+  const weekBonus = trainDates.filter((d) => d >= mon && d < sat).length;
+  const last = trainDates.filter((d) => d <= today).at(-1);
+
+  // 除脂肪体重は体組成チャートと同じ 7 日平均（3 点未満なら出さない）。下限は body-goals.json から
+  const leanMa = rows.length ? movingAvg7("lean_kg", 3)(rows.at(-1).date) : null;
+  const leanMin = goals?.targets?.lean_body_mass_kg?.min;
+  let leanSub = "";
+  if (leanMa !== null && typeof leanMin === "number") {
+    const gap = leanMa - leanMin;
+    leanSub = `<div class="sub${gap < 0 ? " bad" : ""}">下限 ${leanMin.toFixed(1)} ${gap < 0 ? "を割っている" : "まで " + gap.toFixed(1)}</div>`;
+  }
+
+  document.getElementById("trainStatus").innerHTML = `
+    <div class="statgrid">
+      <div class="stat"><div class="label">今週末</div>
+        <div class="value">${doneDay ? `○ <small>${weekday(doneDay)}曜</small>` : "まだ"}</div>
+        <div class="sub">${weekBonus ? `平日ボーナス ${weekBonus} 回` : "土・日のどちらか"}</div></div>
+      <div class="stat"><div class="label">前回</div>
+        <div class="value">${last ? fmtDateShort(last) : "−"}</div></div>
+      <div class="stat"><div class="label">除脂肪 7日平均</div>
+        <div class="value">${leanMa === null ? "−" : `${leanMa.toFixed(1)}<small> kg</small>`}</div>
+        ${leanSub}</div>
+    </div>`;
+}
+
+// 回数×セットの表記。回数の正本は JSON の reps / sec の 1 か所だけで、ここでは組み立てるだけ
+function doseText(it) {
+  const side = it.per_side ? "左右 " : "";
+  if (typeof it.sec === "number") return `${side}${it.per_side ? "各" : ""}${it.sec}秒`;
+  if (typeof it.reps === "number") return `${side}${it.reps}${typeof it.sets === "number" ? "×" + it.sets : " 回"}`;
+  return "";
+}
+
+function renderTrainMenu() {
+  const meta = document.getElementById("trainMeta");
+  const box = document.getElementById("trainMenu");
+  const rules = document.getElementById("trainRules");
+  if (!menu || !Array.isArray(menu.blocks)) {
+    meta.textContent = "";
+    box.innerHTML = `<p class="caption">メニュー（training-menu.json）を読み込めませんでした。Issue #278 を見てください。</p>`;
+    rules.innerHTML = "";
+    return;
+  }
+  const s = menu.session || {};
+  meta.textContent = [s.total_min && `約 ${s.total_min} 分`, s.rest, s.first_time].filter(Boolean).join(" ／ ");
+
+  box.innerHTML = menu.blocks.map((b) => {
+    const items = Array.isArray(b.items) ? b.items : [];
+    const tmeta = [b.superset && b.rounds && `交互に ${b.rounds} 周`, b.min && `約 ${b.min} 分`]
+      .filter(Boolean).map(escapeHtml).join(" · ");
+    return `<div class="tblock">
+      <div class="tblock-head"><span class="tcode">${escapeHtml(b.id)}</span>
+        <span class="ttitle">${escapeHtml(b.title)}</span><span class="tmeta">${tmeta}</span></div>
+      <ul class="titems">${items.map((it) => `<li>
+        <span class="tcode">${escapeHtml(it.id ?? "")}</span>
+        <div class="tname">${escapeHtml(it.name)}${it.cue ? `<small>${escapeHtml(it.cue)}</small>` : ""}</div>
+        <span class="tdose">${escapeHtml(doseText(it))}</span></li>`).join("")}</ul>
+    </div>`;
+  }).join("");
+
+  const p = menu.progression || {};
+  const caps = menu.blocks.flatMap((b) => b.items || []).filter((it) => typeof it.cap === "number")
+    .map((it) => `<li>${escapeHtml(it.name)}: 上限 ${escapeHtml(it.cap)}${typeof it.sec === "number" ? " 秒" : " 回"}${it.harder ? ` → ${escapeHtml(it.harder)}` : ""}</li>`);
+  rules.innerHTML = `<ul class="trules">
+      ${[s.intensity, p.rule, p.at_cap].filter(Boolean).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}
+      ${caps.join("")}
+      ${(menu.cautions || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("")}
+    </ul>`;
+}
+
 function renderAll() {
   renderDay();
   renderCharts();
   renderAvgs();
   renderTable();
+  renderTrainStatus();
+  renderTrainMenu();
 }
 
 // ---------- スクロールリビール ----------
@@ -1221,13 +1351,20 @@ async function load() {
   noticeEl.hidden = false;
   noticeEl.textContent = "読み込み中…";
   try {
-    // 目標が読めなくても推移そのものは読めるので、body-goals.json の欠落では止めない
-    const [metrics, log, g] = await Promise.all([
+    // 目標・メニューが読めなくても推移そのものは読めるので、JSON の欠落や破損では止めない
+    const optionalJson = (url) => fetchJson(url, token).catch((e) => {
+      if (e.auth) throw e;
+      return null;
+    });
+    const [metrics, log, g, m] = await Promise.all([
       fetchCsv(METRICS_API, token),
       fetchCsv(LOG_API, token),
-      fetchJson(GOALS_API, token),
+      optionalJson(GOALS_API),
+      optionalJson(MENU_API),
     ]);
     goals = g;
+    menu = m;
+    trainDates = (log || []).filter((r) => r.training === "ok").map((r) => r.date).sort();
     rows = buildRows(metrics, log);
     if (!rows.length) {
       noticeEl.textContent =
@@ -1240,6 +1377,8 @@ async function load() {
     renderAll();
     setupReveal();
     setupStages();
+    // ブックマーク（activity.html#training）から開いたときは、描画後にメニューへ移る
+    if (location.hash === "#training") document.getElementById("training").scrollIntoView?.();
   } catch (e) {
     if (e.auth) {
       localStorage.removeItem(entry.key);   // 期限切れになった方だけ捨てる
