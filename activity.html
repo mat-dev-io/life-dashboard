@@ -1197,6 +1197,8 @@ let runUndo = [];        // 誤タップを戻すための直前状態（端末�
 let runCopyMsg = "";
 let runTick = null;
 let wakeLock = null;
+let wakeLockPending = false;
+let audioCtx = null;
 
 // メニューを「1 セット = 1 ステップ」の列に展開する。スーパーセットは A1 → A2 → A1 … の順で、
 // 休憩は組の最後の種目の後だけ。id の無い種目（ウォームアップ）は記録しない確認だけのステップ
@@ -1212,9 +1214,12 @@ function buildPlan(m) {
   for (const b of m?.blocks || []) {
     const items = Array.isArray(b.items) ? b.items : [];
     if (b.superset && items.length) {
+      // 組の中でセット数が違う種目は、自分のセット数を終えたら周回から外れる
       const rounds = b.rounds || Math.max(...items.map((it) => it.sets || 1));
       for (let r = 1; r <= rounds; r++) {
-        items.forEach((it, i) => steps.push(stepOf(b, it, r, rounds, i === items.length - 1)));
+        const inRound = items.filter((it) => r <= (it.sets || rounds));
+        inRound.forEach((it, i) =>
+          steps.push(stepOf(b, it, r, it.sets || rounds, i === inRound.length - 1)));
       }
       continue;
     }
@@ -1248,7 +1253,8 @@ function advanceRun(st, now) {
   }
   const idx = st.idx + 1;
   if (idx >= st.plan.length) return { ...st, idx, phase: "done", timerEnd: null, holdEnd: null };
-  return { ...st, idx, phase: "set", value: st.plan[idx].target, timerEnd: null, holdEnd: null };
+  return { ...st, idx, phase: "set", value: st.plan[idx].target, timerEnd: null, holdEnd: null,
+           holdDone: false };
 }
 
 function recordSet(st, rir) {
@@ -1266,7 +1272,7 @@ function applyRunAction(st, act, arg, now) {
       return { ...st, value: Math.max(0, (st.value ?? 0) + d) };
     }
     case "hold":   // 秒数種目のカウントダウン
-      return { ...st, holdEnd: now + (st.value ?? 0) * 1000 };
+      return { ...st, holdEnd: now + (st.value ?? 0) * 1000, holdDone: false };
     case "done":
       if (!step?.record) return advanceRun(st, now);
       // 最終セットだけ余力を聞く（漸進ルールが見るのは最終セットの余力）
@@ -1280,8 +1286,11 @@ function applyRunAction(st, act, arg, now) {
       return { ...st, timerEnd: Math.max(st.timerEnd ?? now, now) + 30000 };
     case "restEnd":
       return advanceRun(st, now);
-    case "finish":
-      return { ...st, phase: "done", timerEnd: null, holdEnd: null };
+    case "finish": {
+      // 余力を聞いている途中で終えても、終えたセット自体は残す（余力は未記録）
+      const base = st.phase === "rir" ? recordSet(st, null) : st;
+      return { ...base, phase: "done", timerEnd: null, holdEnd: null, holdDone: false };
+    }
     default:
       return st;
   }
@@ -1318,31 +1327,69 @@ function saveRun() {
   } catch { /* 保存できなくても実施は続けられる */ }
 }
 
-// 同じ日の途中経過だけを再開する（日をまたいだものは捨てる）
+// 開始から 12 時間以内の途中経過だけを再開する（日付で切ると深夜 0 時をまたいだ回が消える）。
+// log の日付は開始日のまま
+const RUN_RESUME_MS = 12 * 3600000;
 function restoreRun() {
   try {
     const st = JSON.parse(localStorage.getItem(RUN_KEY));
-    if (st && st.v === 1 && st.date === jstToday() && Array.isArray(st.plan) && st.plan.length) return st;
+    if (st && st.v === 1 && Array.isArray(st.plan) && st.plan.length &&
+        Date.now() - st.startedAt < RUN_RESUME_MS) return st;
   } catch { /* 壊れていれば新規扱い */ }
   return null;
 }
 
+// request() の完了待ちの間に次のタップで呼ばれても二重に取らない（取りこぼした分は解放できなくなる）
 async function syncWakeLock() {
+  if (wakeLockPending) return;
   const want = run && run.phase !== "done";
+  wakeLockPending = true;
   try {
     if (want && !wakeLock && window.navigator?.wakeLock) {
-      wakeLock = await window.navigator.wakeLock.request("screen");
-      wakeLock.addEventListener?.("release", () => { wakeLock = null; });
+      const lock = await window.navigator.wakeLock.request("screen");
+      lock.addEventListener?.("release", () => { if (wakeLock === lock) wakeLock = null; });
+      wakeLock = lock;
     } else if (!want && wakeLock) {
-      await wakeLock.release();
+      const lock = wakeLock;
       wakeLock = null;
+      await lock.release();
     }
-  } catch { wakeLock = null; }   // 未対応端末・省電力モードでは何もしない
+  } catch { /* 未対応端末・省電力モードでは何もしない */ }
+  wakeLockPending = false;   // 待っている間の状態変化は、次のタップの呼び出しで合わせる
+}
+
+// iOS Safari は vibrate を持たないので、短い音でも知らせる。AudioContext はタップの中で作る
+// （ユーザー操作の外で作ると鳴らない）。どちらも使えなければ画面表示だけになる
+function primeAudio() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!audioCtx && AC) audioCtx = new AC();
+    audioCtx?.resume?.();
+  } catch { audioCtx = null; }
+}
+function notifyTimerEnd() {
+  window.navigator?.vibrate?.([200, 100, 200]);
+  try {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    for (const at of [0, 0.3]) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.25, t + at);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + at + 0.2);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t + at);
+      osc.stop(t + at + 0.2);
+    }
+  } catch { /* 音が出せなくても画面表示は出る */ }
 }
 
 // タイマーの表示だけを 250ms ごとに書き換える（全体を描き直すとタップ中のボタンが消える）
 function syncTimer() {
-  const active = run && (run.phase === "rest" || run.holdEnd);
+  // 数え終わった休憩・保持では回さない（元に戻す・再読み込みで二重に知らせない）
+  const now = Date.now();
+  const active = run && ((run.phase === "rest" && run.timerEnd > now) || run.holdEnd > now);
   if (!active) {
     if (runTick !== null && typeof clearInterval === "function") clearInterval(runTick);
     runTick = null;
@@ -1356,9 +1403,9 @@ function syncTimer() {
     const el = document.getElementById("trainRun").querySelector?.("[data-timer]");
     if (el) el.textContent = fmtClock(left);
     if (left <= 0) {
-      window.navigator?.vibrate?.([200, 100, 200]);
+      notifyTimerEnd();
       if (run.phase === "rest") run = { ...run, timerEnd: Date.now() };   // 表示を「休憩おわり」へ
-      else run = { ...run, holdEnd: null };
+      else run = { ...run, holdEnd: null, holdDone: true };               // 表示を「時間です」へ
       clearInterval(runTick);
       runTick = null;
       saveRun();
@@ -1374,8 +1421,8 @@ function renderTrainRun() {
     run = restoreRun();
     if (run) { syncTimer(); syncWakeLock(); }   // 休憩中に閉じた場合もカウントダウンを続ける
   }
-  const plan = menu && Array.isArray(menu.blocks) ? buildPlan(menu) : [];
   if (!run) {
+    const plan = menu && Array.isArray(menu.blocks) ? buildPlan(menu) : [];
     el.innerHTML = plan.length
       ? `<p class="run-sub">メニューの順にセットを進めます。休憩はタイマーで、最終セットの余力をタップで残し、
            終わったら Issue #63 に貼る記録を作ります。</p>
@@ -1388,8 +1435,8 @@ function renderTrainRun() {
   const foot = (extra = "") => `<div class="run-foot">
       <button data-act="undo"${runUndo.length ? "" : " disabled"}>元に戻す</button>${extra}
       <button data-act="finish">ここで終了</button></div>`;
-  const head = (s) => `<div class="run-head"><span>${escapeHtml(s.block)} · ${escapeHtml(s.title)}</span>
-      <span class="step">${st.idx + 1} / ${st.plan.length}</span></div>`;
+  const head = (s, n = st.idx + 1) => `<div class="run-head"><span>${escapeHtml(s.block)} · ${escapeHtml(s.title)}</span>
+      <span class="step">${n} / ${st.plan.length}</span></div>`;
 
   if (st.phase === "done") {
     const line = buildLogLine(st);
@@ -1407,7 +1454,7 @@ function renderTrainRun() {
   if (st.phase === "rest") {
     const next = st.plan[st.idx + 1];
     const left = st.timerEnd - Date.now();
-    el.innerHTML = `${head(next)}
+    el.innerHTML = `${head(next, st.idx + 2)}
       <p class="run-sub">休憩${left <= 0 ? "" : "中"}</p>
       ${left <= 0 ? `<p class="run-big run-alert">休憩おわり</p>`
                   : `<p class="run-big" data-timer>${fmtClock(left)}</p>`}
@@ -1438,7 +1485,8 @@ function renderTrainRun() {
        <p class="run-sub" style="text-align:center">${side}メニュー ${step.target} ${unitLabel}</p>
        ${step.unit === "sec" ? (holdLeft !== null
          ? `<p class="run-big" data-timer>${fmtClock(holdLeft)}</p>`
-         : `<div class="run-row"><button data-act="hold">タイマー開始</button></div>`) : ""}`
+         : `${st.holdDone ? `<p class="run-big run-alert">時間です</p>` : ""}
+            <div class="run-row"><button data-act="hold">${st.holdDone ? "もう一度" : "タイマー開始"}</button></div>`) : ""}`
     : `<p class="run-sub">${step.target ? `${side}${step.target} ${unitLabel}` : "ひと通り動かす"}</p>`;
   el.innerHTML = `${head(step)}
     <p class="run-name">${escapeHtml(step.id ?? "")} ${escapeHtml(step.name)}</p>
@@ -1461,6 +1509,7 @@ async function copyRunLog() {
 
 function dispatchRun(act, arg) {
   const now = Date.now();
+  primeAudio();
   if (act === "start") {
     run = newRun(menu, jstToday(), now);
     runUndo = [];

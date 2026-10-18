@@ -53,6 +53,7 @@ async function runPage(file, fixtures, opts = {}) {
   const ids = collectIds(html);
   const els = new Map();
   const authHeaders = [];
+  const methods = [];   // GET 以外のリクエストを検出する（public ページから書き込まない不変条件）
   const filterButtons = ["7", "30", "90"].map((d) => {
     const b = new El(`filter-${d}`);
     b.dataset.days = d;
@@ -89,6 +90,7 @@ async function runPage(file, fixtures, opts = {}) {
     getComputedStyle: () => ({ getPropertyValue: () => "#336699" }),
     fetch: async (url, init) => {
       if (init?.headers?.Authorization) authHeaders.push(init.headers.Authorization);
+      methods.push(String(init?.method ?? "GET").toUpperCase());
       for (const [key, body] of Object.entries(fixtures)) {
         if (url.includes(key)) {
           return { ok: true, status: 200,
@@ -120,7 +122,7 @@ async function runPage(file, fixtures, opts = {}) {
   vm.runInContext(extractScript(html), sandbox, { filename: file });
   await new Promise((r) => setTimeout(r, 20)); // load() の完了を待つ
   const chartByCanvas = (id) => ChartStub.created.filter((c) => c.el.id === id).at(-1);
-  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox, authHeaders };
+  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox, authHeaders, methods };
 }
 
 // ---------- 睡眠ページ ----------
@@ -509,7 +511,7 @@ const click = (els, act, arg) => els.get("trainRun").listeners.click({
 }
 
 {
-  const { els } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
+  const { els, methods } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
   const html = () => els.get("trainRun").innerHTML;
   assert("act/run: 未開始は「始める」", html().includes('data-act="start"'), html());
 
@@ -525,6 +527,7 @@ const click = (els, act, arg) => els.get("trainRun").listeners.click({
   click(els, "done");                       // A2 1 セット目 → 休憩
   assert("act/run: 組の最後で休憩", html().includes("data-timer") && html().includes("1:00"), html());
   assert("act/run: 休憩中に次の種目を出す", html().includes("次: A1"), html());
+  assert("act/run: 休憩中の番号は次のステップ", html().includes("5 / 9"), html());
   click(els, "restMore");
   assert("act/run: 休憩を 30 秒延ばす", html().includes("1:30"), html());
   click(els, "restEnd");
@@ -549,6 +552,8 @@ const click = (els, act, arg) => els.get("trainRun").listeners.click({
   assert("act/run: クリップボード不可なら手動コピーを案内", html().includes("長押しで選択"), html());
   click(els, "discard");
   assert("act/run: 破棄で未開始に戻る", html().includes('data-act="start"'), html());
+  assert("act/run: 一連の操作で GET 以外を送らない", methods.length > 0 && methods.every((m) => m === "GET"),
+    methods.join(","));
 }
 
 {
@@ -562,6 +567,24 @@ const click = (els, act, arg) => els.get("trainRun").listeners.click({
   st = sandbox.applyRunAction(st, "finish", undefined, 0);
   assert("act/run: 途中終了は終えたセットだけ", sandbox.buildLogLine(st) === "log 2026-07-12 トレ:○ 記録:A1=8",
     sandbox.buildLogLine(st));
+
+  // 余力を聞いている画面で終了しても、そのセットは残す（余力は未記録）
+  let r = sandbox.newRun(m, "2026-07-12", 0);
+  while (!(r.plan[r.idx].id === "C1" && r.phase === "set")) {
+    r = sandbox.applyRunAction(r, r.phase === "rest" ? "restEnd" : r.phase === "rir" ? "rir" : "done", 2, 0);
+  }
+  r = sandbox.applyRunAction(r, "done", undefined, 0);
+  assert("act/run: C1 は最終セットで余力待ち", r.phase === "rir");
+  r = sandbox.applyRunAction(r, "finish", undefined, 0);
+  assert("act/run: 余力待ちで終了してもセットは残す", sandbox.buildLogLine(r).endsWith(",C1=45s"),
+    sandbox.buildLogLine(r));
+
+  // スーパーセットの中でセット数が違う種目は、自分のセット数で周回から外れる
+  const uneven = sandbox.buildPlan({ blocks: [{ id: "A", superset: true, rounds: 3, items: [
+    { id: "A1", name: "x", reps: 8, sets: 3 }, { id: "A2", name: "y", reps: 10, sets: 2 }] }] });
+  assert("act/run: セット数の違う組", uneven.map((p) => `${p.id}-${p.set}/${p.sets}`).join(",")
+    === "A1-1/3,A2-1/2,A1-2/3,A2-2/2,A1-3/3", uneven.map((p) => `${p.id}-${p.set}/${p.sets}`).join(","));
+  assert("act/run: 組の最後が抜けた周は残った種目の後で休憩", uneven[3].rest && !uneven[4].rest);
 }
 
 {
@@ -581,9 +604,13 @@ const click = (els, act, arg) => els.get("trainRun").listeners.click({
 {
   // 途中経過は同じ日だけ再開する。別の日・壊れた値は捨てて新規扱い
   const { sandbox } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
-  const st = sandbox.applyRunAction(sandbox.newRun(JSON.parse(trainingMenu), "2026-07-12", 0), "done", undefined, 0);
-  for (const [label, saved, resumed] of [["同じ日", { ...st }, true],
-                                         ["別の日", { ...st, date: "2026-07-11" }, false],
+  // 開始から 12 時間以内なら再開する（0 時をまたいでも消さない）。それより古い・壊れた値は捨てる
+  const now = Date.parse("2026-07-12T12:00:00+09:00");
+  const st = sandbox.applyRunAction(sandbox.newRun(JSON.parse(trainingMenu), "2026-07-12", now - 3600000),
+    "done", undefined, 0);
+  for (const [label, saved, resumed] of [["1 時間前", { ...st }, true],
+                                         ["前日の深夜開始", { ...st, date: "2026-07-11", startedAt: now - 11 * 3600000 }, true],
+                                         ["13 時間前", { ...st, startedAt: now - 13 * 3600000 }, false],
                                          ["破損", "{ broken", false]]) {
     const { els } = await runPage("activity.html", runFixtures, {
       now: "2026-07-12T12:00:00+09:00",
