@@ -311,6 +311,33 @@
   }
   .trules { font-size: 0.8rem; color: var(--text-2); line-height: 1.7; margin: 4px 0 0; padding-left: 1.2em; }
 
+  /* 実施モード: トレ中に片手で押せるよう、ボタンは大きく・行き先は 1 画面に収める */
+  .run-head { display: flex; align-items: baseline; gap: 8px; font-size: 0.75rem; color: var(--text-3); }
+  .run-head .step { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .run-name { font-size: 1.15rem; font-weight: 700; margin: 6px 0 2px; line-height: 1.35; }
+  .run-sub { font-size: 0.8rem; color: var(--text-2); margin: 0 0 12px; line-height: 1.5; }
+  .run-big {
+    font-size: 2.6rem; font-weight: 700; text-align: center; margin: 4px 0;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .run-big small { font-size: 1rem; font-weight: 500; color: var(--text-2); }
+  .run-adjust { display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .run-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 12px; }
+  .run button {
+    min-height: 48px; padding: 10px; border: 0; border-radius: 14px; cursor: pointer;
+    background: var(--fill); color: var(--text); font-size: 0.95rem; font-weight: 600;
+  }
+  .run button.primary { background: var(--accent); color: #fff; }
+  .run button.round { width: 56px; height: 56px; border-radius: 50%; font-size: 1.4rem; }
+  .run .run-foot { display: flex; justify-content: space-between; margin-top: 14px; }
+  .run .run-foot button { background: transparent; color: var(--accent); min-height: 40px; padding: 6px 0; font-weight: 500; }
+  .run .run-alert { text-align: center; color: var(--good); font-weight: 700; }
+  .run textarea {
+    width: 100%; min-height: 84px; padding: 10px; margin-top: 8px;
+    border: 1px solid var(--sep); border-radius: 12px; background: var(--page); color: var(--text);
+    font-size: 0.8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
   /* 初回のアクセス設定（共有パスワード / PAT） */
   .auth p { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; }
   .auth input {
@@ -645,6 +672,10 @@
         <h2 class="head"><span>守るための、</span><span>週末 1 回。</span></h2>
         <p class="lead">脂肪を落とすあいだ、筋肉は残す。</p>
         <div class="card"><div id="trainStatus"></div></div>
+        <div class="card run">
+          <h3>実施モード</h3>
+          <div id="trainRun"></div>
+        </div>
         <div class="card">
           <h3>メニュー</h3>
           <p class="caption" id="trainMeta"></p>
@@ -1154,6 +1185,315 @@ function renderTrainMenu() {
     </ul>`;
 }
 
+// ---------- 週末トレの実施モード（#373） ----------
+// 状態遷移は純関数（buildPlan / applyRunAction / buildLogLine）に寄せ、描画は renderTrainRun だけが行う。
+// 記録は端末の localStorage にだけ置き、終了時に LIFE の Issue #63 へ貼る log 文字列を作る。
+// PAT は読み取り専用のままにするため、ページから GitHub へは書き込まない（コピー → 手で貼る）
+const RUN_KEY = "life_dashboard_train_run";
+const LOG_ISSUE_URL = "https://github.com/mat-dev-io/LIFE/issues/63";
+let run = null;          // 実施中の状態（null = 未開始）
+let runRestored = false; // localStorage からの復元は最初の描画で 1 回だけ試す
+let runUndo = [];        // 誤タップを戻すための直前状態（端末に保存しない）
+let runCopyMsg = "";
+let runTick = null;
+let wakeLock = null;
+
+// メニューを「1 セット = 1 ステップ」の列に展開する。スーパーセットは A1 → A2 → A1 … の順で、
+// 休憩は組の最後の種目の後だけ。id の無い種目（ウォームアップ）は記録しない確認だけのステップ
+function buildPlan(m) {
+  const steps = [];
+  const stepOf = (b, it, set, sets, rest) => {
+    const unit = typeof it.sec === "number" ? "sec" : typeof it.reps === "number" ? "reps" : null;
+    const record = Boolean(it.id && unit);
+    return { block: String(b.id ?? ""), title: b.title ?? "", id: it.id ?? null, name: it.name ?? "",
+             cue: it.cue ?? "", unit, target: unit ? it[unit] : null, per_side: Boolean(it.per_side),
+             set, sets, record, rest: record && rest };
+  };
+  for (const b of m?.blocks || []) {
+    const items = Array.isArray(b.items) ? b.items : [];
+    if (b.superset && items.length) {
+      const rounds = b.rounds || Math.max(...items.map((it) => it.sets || 1));
+      for (let r = 1; r <= rounds; r++) {
+        items.forEach((it, i) => steps.push(stepOf(b, it, r, rounds, i === items.length - 1)));
+      }
+      continue;
+    }
+    for (const it of items) {
+      const n = it.id ? it.sets || 1 : 1;
+      for (let s = 1; s <= n; s++) steps.push(stepOf(b, it, s, n, true));
+    }
+  }
+  if (steps.length) steps.at(-1).rest = false;   // 最後の後は休憩しない
+  return steps;
+}
+
+// 休憩秒数は session.rest の最初の数値（「60〜90 秒」→ 60）。延長は +30 秒ボタンで
+function restSecOf(m) {
+  const n = Number(String(m?.session?.rest ?? "").match(/\d+/)?.[0]);
+  return n > 0 ? n : 60;
+}
+
+function newRun(m, date, now) {
+  const plan = buildPlan(m);
+  return { v: 1, date, startedAt: now, plan, idx: 0, phase: plan.length ? "set" : "done",
+           value: plan[0]?.target ?? null, done: {}, restSec: restSecOf(m),
+           timerEnd: null, holdEnd: null };
+}
+
+// 現在のステップを終えて次へ。休憩が要るステップなら、いったん rest に入る（idx はそのまま）
+function advanceRun(st, now) {
+  const step = st.plan[st.idx];
+  if (step?.rest && st.idx < st.plan.length - 1 && st.phase !== "rest") {
+    return { ...st, phase: "rest", timerEnd: now + st.restSec * 1000, holdEnd: null };
+  }
+  const idx = st.idx + 1;
+  if (idx >= st.plan.length) return { ...st, idx, phase: "done", timerEnd: null, holdEnd: null };
+  return { ...st, idx, phase: "set", value: st.plan[idx].target, timerEnd: null, holdEnd: null };
+}
+
+function recordSet(st, rir) {
+  const step = st.plan[st.idx];
+  const list = [...(st.done[step.id] || []), { v: st.value, rir }];
+  return { ...st, done: { ...st.done, [step.id]: list } };
+}
+
+function applyRunAction(st, act, arg, now) {
+  const step = st.plan[st.idx];
+  switch (act) {
+    case "inc":
+    case "dec": {
+      const d = (step?.unit === "sec" ? 5 : 1) * (act === "inc" ? 1 : -1);
+      return { ...st, value: Math.max(0, (st.value ?? 0) + d) };
+    }
+    case "hold":   // 秒数種目のカウントダウン
+      return { ...st, holdEnd: now + (st.value ?? 0) * 1000 };
+    case "done":
+      if (!step?.record) return advanceRun(st, now);
+      // 最終セットだけ余力を聞く（漸進ルールが見るのは最終セットの余力）
+      if (step.set === step.sets) return { ...st, phase: "rir", holdEnd: null };
+      return advanceRun(recordSet(st, null), now);
+    case "rir":
+      return advanceRun(recordSet(st, Math.max(0, Math.min(3, Number(arg) || 0))), now);
+    case "skip":
+      return advanceRun({ ...st, phase: "set" }, now);
+    case "restMore":
+      return { ...st, timerEnd: Math.max(st.timerEnd ?? now, now) + 30000 };
+    case "restEnd":
+      return advanceRun(st, now);
+    case "finish":
+      return { ...st, phase: "done", timerEnd: null, holdEnd: null };
+    default:
+      return st;
+  }
+}
+
+// LIFE の scripts/health-log-from-comment.sh が読む書式（#372）。
+// 回数は全セットの最小値（漸進判定は「メニュー値以上」を見るので控えめな側に倒す）、
+// セット数は実施した数、余力は最終セットのもの。日付は投稿日とずれないよう ISO で明記する
+function buildLogLine(st) {
+  const parts = [];
+  const seen = new Set();
+  for (const step of st.plan) {
+    if (!step.record || seen.has(step.id)) continue;
+    seen.add(step.id);
+    const sets = st.done[step.id] || [];
+    if (!sets.length) continue;
+    const v = Math.min(...sets.map((x) => x.v ?? 0));
+    const rir = sets.at(-1).rir;
+    parts.push(`${step.id}=${v}${step.unit === "sec" ? "s" : ""}${sets.length > 1 ? "x" + sets.length : ""}` +
+               `${rir === null || rir === undefined ? "" : "@" + rir}`);
+  }
+  return `log ${st.date} トレ:○${parts.length ? " 記録:" + parts.join(",") : ""}`;
+}
+
+const fmtClock = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+function saveRun() {
+  try {
+    if (run) localStorage.setItem(RUN_KEY, JSON.stringify(run));
+    else localStorage.removeItem(RUN_KEY);
+  } catch { /* 保存できなくても実施は続けられる */ }
+}
+
+// 同じ日の途中経過だけを再開する（日をまたいだものは捨てる）
+function restoreRun() {
+  try {
+    const st = JSON.parse(localStorage.getItem(RUN_KEY));
+    if (st && st.v === 1 && st.date === jstToday() && Array.isArray(st.plan) && st.plan.length) return st;
+  } catch { /* 壊れていれば新規扱い */ }
+  return null;
+}
+
+async function syncWakeLock() {
+  const want = run && run.phase !== "done";
+  try {
+    if (want && !wakeLock && window.navigator?.wakeLock) {
+      wakeLock = await window.navigator.wakeLock.request("screen");
+      wakeLock.addEventListener?.("release", () => { wakeLock = null; });
+    } else if (!want && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch { wakeLock = null; }   // 未対応端末・省電力モードでは何もしない
+}
+
+// タイマーの表示だけを 250ms ごとに書き換える（全体を描き直すとタップ中のボタンが消える）
+function syncTimer() {
+  const active = run && (run.phase === "rest" || run.holdEnd);
+  if (!active) {
+    if (runTick !== null && typeof clearInterval === "function") clearInterval(runTick);
+    runTick = null;
+    return;
+  }
+  if (runTick !== null || typeof setInterval !== "function") return;
+  runTick = setInterval(() => {
+    const end = run?.phase === "rest" ? run.timerEnd : run?.holdEnd;
+    if (!end) { syncTimer(); return; }
+    const left = end - Date.now();
+    const el = document.getElementById("trainRun").querySelector?.("[data-timer]");
+    if (el) el.textContent = fmtClock(left);
+    if (left <= 0) {
+      window.navigator?.vibrate?.([200, 100, 200]);
+      if (run.phase === "rest") run = { ...run, timerEnd: Date.now() };   // 表示を「休憩おわり」へ
+      else run = { ...run, holdEnd: null };
+      clearInterval(runTick);
+      runTick = null;
+      saveRun();
+      renderTrainRun();
+    }
+  }, 250);
+}
+
+function renderTrainRun() {
+  const el = document.getElementById("trainRun");
+  if (!runRestored) {
+    runRestored = true;
+    run = restoreRun();
+    if (run) { syncTimer(); syncWakeLock(); }   // 休憩中に閉じた場合もカウントダウンを続ける
+  }
+  const plan = menu && Array.isArray(menu.blocks) ? buildPlan(menu) : [];
+  if (!run) {
+    el.innerHTML = plan.length
+      ? `<p class="run-sub">メニューの順にセットを進めます。休憩はタイマーで、最終セットの余力をタップで残し、
+           終わったら Issue #63 に貼る記録を作ります。</p>
+         <div class="run-row"><button class="primary" data-act="start">始める</button></div>`
+      : `<p class="caption">メニューが読めないため使えません。</p>`;
+    return;
+  }
+  const st = run;
+  const step = st.plan[st.idx];
+  const foot = (extra = "") => `<div class="run-foot">
+      <button data-act="undo"${runUndo.length ? "" : " disabled"}>元に戻す</button>${extra}
+      <button data-act="finish">ここで終了</button></div>`;
+  const head = (s) => `<div class="run-head"><span>${escapeHtml(s.block)} · ${escapeHtml(s.title)}</span>
+      <span class="step">${st.idx + 1} / ${st.plan.length}</span></div>`;
+
+  if (st.phase === "done") {
+    const line = buildLogLine(st);
+    el.innerHTML = `<p class="run-sub">おつかれさま。下の 1 行を Issue #63 にコメントすると記録されます。</p>
+      <textarea readonly aria-label="記録の log 文字列">${escapeHtml(line)}</textarea>
+      ${runCopyMsg ? `<p class="caption">${escapeHtml(runCopyMsg)}</p>` : ""}
+      <div class="run-row"><button class="primary" data-act="copy">コピー</button>
+        <a class="herolink" style="margin:0;text-align:center;padding:14px" href="${LOG_ISSUE_URL}"
+           target="_blank" rel="noopener">Issue #63 を開く</a></div>
+      <div class="run-foot"><button data-act="undo"${runUndo.length ? "" : " disabled"}>元に戻す</button>
+        <button data-act="discard">記録を消して閉じる</button></div>`;
+    return;
+  }
+
+  if (st.phase === "rest") {
+    const next = st.plan[st.idx + 1];
+    const left = st.timerEnd - Date.now();
+    el.innerHTML = `${head(next)}
+      <p class="run-sub">休憩${left <= 0 ? "" : "中"}</p>
+      ${left <= 0 ? `<p class="run-big run-alert">休憩おわり</p>`
+                  : `<p class="run-big" data-timer>${fmtClock(left)}</p>`}
+      <p class="run-sub">次: ${escapeHtml(next.id ?? "")} ${escapeHtml(next.name)}（${next.set}/${next.sets} セット）</p>
+      <div class="run-row"><button data-act="restMore">+30 秒</button>
+        <button class="primary" data-act="restEnd">次へ</button></div>${foot()}`;
+    return;
+  }
+
+  if (st.phase === "rir") {
+    el.innerHTML = `${head(step)}
+      <p class="run-name">${escapeHtml(step.name)}</p>
+      <p class="run-sub">最終セット ${st.value}${step.unit === "sec" ? " 秒" : " 回"}。あと何回できそうでしたか？</p>
+      <div class="run-row">${[0, 1, 2, 3].map((n) =>
+        `<button class="${n >= 2 ? "primary" : ""}" data-act="rir" data-arg="${n}">${n === 3 ? "3+" : n}</button>`).join("")}</div>
+      ${foot()}`;
+    return;
+  }
+
+  // phase === "set"
+  const unitLabel = step.unit === "sec" ? "秒" : "回";
+  const side = step.per_side ? "左右 各" : "";
+  const holdLeft = st.holdEnd ? st.holdEnd - Date.now() : null;
+  const body = step.record
+    ? `<div class="run-adjust"><button class="round" data-act="dec" aria-label="減らす">−</button>
+         <p class="run-big">${st.value}<small> ${unitLabel}</small></p>
+         <button class="round" data-act="inc" aria-label="増やす">＋</button></div>
+       <p class="run-sub" style="text-align:center">${side}メニュー ${step.target} ${unitLabel}</p>
+       ${step.unit === "sec" ? (holdLeft !== null
+         ? `<p class="run-big" data-timer>${fmtClock(holdLeft)}</p>`
+         : `<div class="run-row"><button data-act="hold">タイマー開始</button></div>`) : ""}`
+    : `<p class="run-sub">${step.target ? `${side}${step.target} ${unitLabel}` : "ひと通り動かす"}</p>`;
+  el.innerHTML = `${head(step)}
+    <p class="run-name">${escapeHtml(step.id ?? "")} ${escapeHtml(step.name)}</p>
+    <p class="run-sub">${step.record ? `${step.set} / ${step.sets} セット` : "ウォームアップ"}${step.cue ? ` — ${escapeHtml(step.cue)}` : ""}</p>
+    ${body}
+    <div class="run-row"><button data-act="skip">飛ばす</button>
+      <button class="primary" data-act="done">${step.record && step.set === step.sets ? "完了 → 余力" : "完了"}</button></div>
+    ${foot()}`;
+}
+
+async function copyRunLog() {
+  try {
+    await window.navigator.clipboard.writeText(buildLogLine(run));
+    runCopyMsg = "コピーしました。Issue #63 を開いてコメント欄に貼ってください。";
+  } catch {
+    runCopyMsg = "コピーできませんでした。上の文字列を長押しで選択してコピーしてください。";
+  }
+  renderTrainRun();
+}
+
+function dispatchRun(act, arg) {
+  const now = Date.now();
+  if (act === "start") {
+    run = newRun(menu, jstToday(), now);
+    runUndo = [];
+  } else if (act === "discard") {
+    run = null;
+    runUndo = [];
+  } else if (act === "undo") {
+    if (runUndo.length) run = runUndo.pop();
+  } else if (act === "copy") {
+    copyRunLog();
+    return;
+  } else if (run) {
+    runUndo.push(run);
+    if (runUndo.length > 50) runUndo.shift();
+    run = applyRunAction(run, act, arg, now);
+    if (act === "finish") copyRunLog();   // 終了のタップをそのままコピーのユーザー操作に使う
+  }
+  runCopyMsg = act === "finish" ? runCopyMsg : "";
+  saveRun();
+  syncTimer();
+  syncWakeLock();
+  renderTrainRun();
+}
+
+document.getElementById("trainRun").addEventListener("click", (e) => {
+  const btn = e.target.closest?.("button[data-act]");
+  if (btn && !btn.disabled) dispatchRun(btn.dataset.act, btn.dataset.arg);
+});
+// 画面を離れると Wake Lock は自動で外れるので、戻ったときに取り直す
+document.addEventListener?.("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncWakeLock();
+});
+
 function renderAll() {
   renderDay();
   renderCharts();
@@ -1161,6 +1501,7 @@ function renderAll() {
   renderTable();
   renderTrainStatus();
   renderTrainMenu();
+  renderTrainRun();
 }
 
 // ---------- スクロールリビール ----------
