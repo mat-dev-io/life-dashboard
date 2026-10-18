@@ -53,6 +53,7 @@ async function runPage(file, fixtures, opts = {}) {
   const ids = collectIds(html);
   const els = new Map();
   const authHeaders = [];
+  const methods = [];   // GET 以外のリクエストを検出する（public ページから書き込まない不変条件）
   const filterButtons = ["7", "30", "90"].map((d) => {
     const b = new El(`filter-${d}`);
     b.dataset.days = d;
@@ -89,6 +90,7 @@ async function runPage(file, fixtures, opts = {}) {
     getComputedStyle: () => ({ getPropertyValue: () => "#336699" }),
     fetch: async (url, init) => {
       if (init?.headers?.Authorization) authHeaders.push(init.headers.Authorization);
+      methods.push(String(init?.method ?? "GET").toUpperCase());
       for (const [key, body] of Object.entries(fixtures)) {
         if (url.includes(key)) {
           return { ok: true, status: 200,
@@ -103,6 +105,9 @@ async function runPage(file, fixtures, opts = {}) {
     TextEncoder, TextDecoder, atob, btoa,
     URLSearchParams,
     location: { search: opts.search ?? "" },
+    // 実施モードのタイマー・クリップボード。タイマーは登録だけして進めない（時間は opts.now で固定）
+    setInterval: () => 1, clearInterval() {},
+    navigator: opts.navigator,
   };
   // 「今日」に依存するページ（学習ページの試験カウントダウン・週集計）は時刻を固定する
   if (opts.now) {
@@ -117,7 +122,7 @@ async function runPage(file, fixtures, opts = {}) {
   vm.runInContext(extractScript(html), sandbox, { filename: file });
   await new Promise((r) => setTimeout(r, 20)); // load() の完了を待つ
   const chartByCanvas = (id) => ChartStub.created.filter((c) => c.el.id === id).at(-1);
-  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox, authHeaders };
+  return { els, filterButtons, ChartStub, chartByCanvas, html, sandbox, authHeaders, methods };
 }
 
 // ---------- 睡眠ページ ----------
@@ -418,7 +423,7 @@ const trainingMenu = JSON.stringify({
       { id: "A2", name: "種目Y", reps: 12, sets: 3, cap: 15 },
     ] },
     { id: "C", title: "仕上げ", min: 4, items: [
-      { name: "種目Z", sec: 45, per_side: true, cap: 90 },
+      { id: "C1", name: "種目Z", sec: 45, per_side: true, cap: 90 },
     ] },
   ],
   progression: { rule: "余力が 2 回続いたら +2 回", at_cap: "上限後は難易度を上げる" },
@@ -479,6 +484,145 @@ const trainLog = `date,exercise_min,sleep,sleep_min,training,notes
   assert("act/train: 目標が無ければ下限は出さない", !st.includes("下限"), st);
 }
 
+// ---- 週末トレの実施モード（#373） ----
+
+const runFixtures = {
+  "metrics-daily.csv": metricsDaily,
+  "health-log.csv": trainLog,
+  "training-menu.json": trainingMenu,
+};
+const click = (els, act, arg) => els.get("trainRun").listeners.click({
+  target: { closest: () => ({ dataset: { act, arg: arg === undefined ? undefined : String(arg) }, disabled: false }) },
+});
+
+{
+  const { sandbox } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
+  const plan = sandbox.buildPlan(JSON.parse(trainingMenu));
+  assert("act/run: 1 セット = 1 ステップに展開", plan.length === 9, `len=${plan.length}`);
+  assert("act/run: スーパーセットは交互の順",
+    plan.slice(2, 8).map((p) => `${p.id}-${p.set}`).join(",") === "A1-1,A2-1,A1-2,A2-2,A1-3,A2-3",
+    plan.map((p) => `${p.id}-${p.set}`).join(","));
+  assert("act/run: id の無い種目は記録しない", !plan[0].record && !plan[1].record);
+  assert("act/run: 休憩は組の最後の後だけ", !plan[2].rest && plan[3].rest);
+  assert("act/run: 最後のステップの後は休憩しない", plan.at(-1).id === "C1" && !plan.at(-1).rest);
+  assert("act/run: 秒数種目の単位", plan.at(-1).unit === "sec" && plan.at(-1).target === 45);
+  assert("act/run: 休憩秒数は session.rest から", sandbox.restSecOf(JSON.parse(trainingMenu)) === 60);
+  assert("act/run: 休憩の既定値", sandbox.restSecOf({}) === 60);
+}
+
+{
+  const { els, methods } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
+  const html = () => els.get("trainRun").innerHTML;
+  assert("act/run: 未開始は「始める」", html().includes('data-act="start"'), html());
+
+  click(els, "start");
+  assert("act/run: 最初はウォームアップ", html().includes("ウォームアップ") && html().includes("種目W"), html());
+  click(els, "done");
+  click(els, "done");
+  assert("act/run: 記録する種目は回数を調整できる", html().includes('data-act="inc"') && html().includes("1 / 3 セット"), html());
+  click(els, "dec");
+  assert("act/run: 回数を減らす", html().includes("7<small> 回</small>"), html());
+  click(els, "done");                       // A1 1 セット目（組の途中なので休憩なし）
+  assert("act/run: 組の途中は休憩を挟まない", html().includes("種目Y"), html());
+  click(els, "done");                       // A2 1 セット目 → 休憩
+  assert("act/run: 組の最後で休憩", html().includes("data-timer") && html().includes("1:00"), html());
+  assert("act/run: 休憩中に次の種目を出す", html().includes("次: A1"), html());
+  assert("act/run: 休憩中の番号は次のステップ", html().includes("5 / 9"), html());
+  click(els, "restMore");
+  assert("act/run: 休憩を 30 秒延ばす", html().includes("1:30"), html());
+  click(els, "restEnd");
+  click(els, "done"); click(els, "done"); click(els, "restEnd");   // 2 セット目
+  assert("act/run: 最終セットは余力を聞く準備", html().includes("完了 → 余力"), html());
+  click(els, "done");
+  assert("act/run: 余力の選択肢", html().includes('data-arg="3">3+') && html().includes("あと何回"), html());
+  click(els, "rir", 2);
+  click(els, "done"); click(els, "rir", 1); click(els, "restEnd");
+  assert("act/run: 秒数種目はタイマー開始", html().includes('data-act="hold"') && html().includes("左右 各メニュー 45 秒"), html());
+  click(els, "hold");
+  assert("act/run: 保持タイマーを表示", html().includes("0:45"), html());
+  click(els, "undo");
+  assert("act/run: 元に戻す", html().includes('data-act="hold"'), html());
+  click(els, "done"); click(els, "rir", 0);
+
+  const line = "log 2026-07-12 トレ:○ 記録:A1=7x3@2,A2=12x3@1,C1=45s@0";
+  assert("act/run: 終了で log 文字列（回数は最小・余力は最終セット）", html().includes(line), html());
+  assert("act/run: Issue #63 へのリンク", html().includes("https://github.com/mat-dev-io/LIFE/issues/63"), html());
+  click(els, "copy");
+  await new Promise((r) => setTimeout(r, 5));
+  assert("act/run: クリップボード不可なら手動コピーを案内", html().includes("長押しで選択"), html());
+  click(els, "discard");
+  assert("act/run: 破棄で未開始に戻る", html().includes('data-act="start"'), html());
+  assert("act/run: 一連の操作で GET 以外を送らない", methods.length > 0 && methods.every((m) => m === "GET"),
+    methods.join(","));
+}
+
+{
+  // 途中で終了しても、終えた分だけで log を作る。何もしていなければ記録なしの 1 行
+  const { sandbox } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
+  const m = JSON.parse(trainingMenu);
+  let st = sandbox.newRun(m, "2026-07-12", 0);
+  assert("act/run: 何もしないで終了", sandbox.buildLogLine(sandbox.applyRunAction(st, "finish", undefined, 0))
+    === "log 2026-07-12 トレ:○");
+  for (const a of ["done", "done", "done"]) st = sandbox.applyRunAction(st, a, undefined, 0);
+  st = sandbox.applyRunAction(st, "finish", undefined, 0);
+  assert("act/run: 途中終了は終えたセットだけ", sandbox.buildLogLine(st) === "log 2026-07-12 トレ:○ 記録:A1=8",
+    sandbox.buildLogLine(st));
+
+  // 余力を聞いている画面で終了しても、そのセットは残す（余力は未記録）
+  let r = sandbox.newRun(m, "2026-07-12", 0);
+  while (!(r.plan[r.idx].id === "C1" && r.phase === "set")) {
+    r = sandbox.applyRunAction(r, r.phase === "rest" ? "restEnd" : r.phase === "rir" ? "rir" : "done", 2, 0);
+  }
+  r = sandbox.applyRunAction(r, "done", undefined, 0);
+  assert("act/run: C1 は最終セットで余力待ち", r.phase === "rir");
+  r = sandbox.applyRunAction(r, "finish", undefined, 0);
+  assert("act/run: 余力待ちで終了してもセットは残す", sandbox.buildLogLine(r).endsWith(",C1=45s"),
+    sandbox.buildLogLine(r));
+
+  // スーパーセットの中でセット数が違う種目は、自分のセット数で周回から外れる
+  const uneven = sandbox.buildPlan({ blocks: [{ id: "A", superset: true, rounds: 3, items: [
+    { id: "A1", name: "x", reps: 8, sets: 3 }, { id: "A2", name: "y", reps: 10, sets: 2 }] }] });
+  assert("act/run: セット数の違う組", uneven.map((p) => `${p.id}-${p.set}/${p.sets}`).join(",")
+    === "A1-1/3,A2-1/2,A1-2/3,A2-2/2,A1-3/3", uneven.map((p) => `${p.id}-${p.set}/${p.sets}`).join(","));
+  assert("act/run: 組の最後が抜けた周は残った種目の後で休憩", uneven[3].rest && !uneven[4].rest);
+}
+
+{
+  // クリップボードが使えればコピーする（終了のタップで自動コピー）
+  let copied = "";
+  const { els } = await runPage("activity.html", runFixtures, {
+    now: "2026-07-12T12:00:00+09:00",
+    navigator: { clipboard: { writeText: async (t) => { copied = t; } } },
+  });
+  click(els, "start");
+  click(els, "finish");
+  await new Promise((r) => setTimeout(r, 5));
+  assert("act/run: 終了で自動コピー", copied === "log 2026-07-12 トレ:○", copied);
+  assert("act/run: コピー完了を表示", els.get("trainRun").innerHTML.includes("コピーしました"));
+}
+
+{
+  // 途中経過は同じ日だけ再開する。別の日・壊れた値は捨てて新規扱い
+  const { sandbox } = await runPage("activity.html", runFixtures, { now: "2026-07-12T12:00:00+09:00" });
+  // 開始から 12 時間以内なら再開する（0 時をまたいでも消さない）。それより古い・壊れた値は捨てる
+  const now = Date.parse("2026-07-12T12:00:00+09:00");
+  const st = sandbox.applyRunAction(sandbox.newRun(JSON.parse(trainingMenu), "2026-07-12", now - 3600000),
+    "done", undefined, 0);
+  for (const [label, saved, resumed] of [["1 時間前", { ...st }, true],
+                                         ["前日の深夜開始", { ...st, date: "2026-07-11", startedAt: now - 11 * 3600000 }, true],
+                                         ["13 時間前", { ...st, startedAt: now - 13 * 3600000 }, false],
+                                         ["破損", "{ broken", false]]) {
+    const { els } = await runPage("activity.html", runFixtures, {
+      now: "2026-07-12T12:00:00+09:00",
+      storage: { life_dashboard_pat: "dummy-token",
+                 life_dashboard_train_run: typeof saved === "string" ? saved : JSON.stringify(saved) },
+    });
+    const h = els.get("trainRun").innerHTML;
+    assert(`act/run: ${label}の途中経過は${resumed ? "再開" : "捨てる"}`,
+      resumed ? h.includes("種目X") && h.includes("2 / 9") : h.includes('data-act="start"'), h);
+  }
+}
+
 {
   // メニューが無い・壊れていても、他の章は壊さない
   for (const [label, fx] of [["欠落", {}], ["破損", { "training-menu.json": "{ broken" }]]) {
@@ -495,6 +639,8 @@ const trainLog = `date,exercise_min,sleep,sleep_min,training,notes
       els.get("trainMenu").innerHTML.includes("読み込めませんでした"), els.get("trainMenu").innerHTML);
     assert(`act/train: メニュー${label}でも実施状況は出す`,
       els.get("trainStatus").innerHTML.includes("今週末"));
+    assert(`act/train: メニュー${label}は実施モードを出さない`,
+      !els.get("trainRun").innerHTML.includes('data-act="start"'), els.get("trainRun").innerHTML);
   }
 }
 
@@ -1187,6 +1333,8 @@ const SHARED_KEY = "life_dashboard_shared_pat";
   assert("activity: メニューは training-menu.json から読む", act.includes("training-menu.json"));
   assert("activity: 実メニューの種目名をページに書かない",
     !/ブルガリアン|ルーマニアン|プッシュアップ|プランク/.test(act));
+  // 実施モードの記録は端末内とクリップボードだけ。PAT は読み取り専用で、ページから GitHub へ書き込まない
+  assert("activity: GitHub へ書き込むリクエストを持たない", !/method:\s*["'](POST|PATCH|PUT|DELETE)/i.test(act));
   assert("activity: ヒーローから週末トレの章へ飛べる",
     act.includes('href="#training"') && act.includes('id="training"'));
   assert("screen: ヒーロー背景画像", scr.includes("assets/hero/screen-hero.webp"));
